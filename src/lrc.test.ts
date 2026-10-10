@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayText, formatTime, parseLrc, serializeLrc, setLineTime } from './lrc';
+import { displayText, joinWords, lineWords, formatTime, parseLrc, serializeLrc, setLineTime } from './lrc';
 
 const times = (s: string) => parseLrc(s).lines.map((l) => l.timeMs);
 
@@ -165,5 +165,34 @@ describe('serialize', () => {
     const once = serializeLrc(parseLrc(x));
     expect(serializeLrc(parseLrc(once))).toBe(once);
     expect(parseLrc(once)).toEqual(parseLrc(x));
+  });
+});
+
+describe('lineWords / joinWords', () => {
+  it('splits plain text into untimed words', () => {
+    expect(lineWords('Hello  big world')).toEqual([
+      { timeMs: null, text: 'Hello  ' },
+      { timeMs: null, text: 'big ' },
+      { timeMs: null, text: 'world' },
+    ]);
+  });
+  it('times words, phrases, syllables and a trailing end tag', () => {
+    expect(lineWords('<00:01.00>Hel<00:01.50>lo <00:02.00>big world <00:03.25>')).toEqual([
+      { timeMs: 1000, text: 'Hel' },
+      { timeMs: 1500, text: 'lo ' },
+      { timeMs: 2000, text: 'big ' },
+      { timeMs: null, text: 'world ' },
+      { timeMs: 3250, text: '' },
+    ]);
+  });
+  it('keeps a literal < as text', () => {
+    expect(joinWords(lineWords('a <3 b'))).toBe('a <3 b');
+  });
+  it('round-trips stably', () => {
+    for (const t of ['<00:01.00>Hel<00:01.50>lo <00:02.00>big world <00:03.25>', 'x <00:01.000> y', 'plain words']) {
+      const once = joinWords(lineWords(t));
+      expect(joinWords(lineWords(once))).toBe(once);
+      expect(displayText(once).replace(/\s+/g, ' ')).toBe(displayText(t).replace(/\s+/g, ' '));
+    }
   });
 });

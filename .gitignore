@@ -3,3 +3,4 @@ demo-dist/
 test-results/
 playwright-report/
 *.tsbuildinfo
+screenshots/

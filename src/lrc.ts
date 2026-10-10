@@ -25,6 +25,34 @@ export function displayText(text: string): string {
   return text.replace(WORD_TAG, '').trim();
 }
 
+export interface LrcWord { timeMs: number | null; text: string } // text keeps its trailing whitespace
+
+// Enhanced LRC: a <mm:ss.xx> tag times the text after it. Words split at whitespace and at tags, so
+// "Hel<t>lo" gives syllables and an untimed word belongs to the timed one before it (phrase timing).
+// A trailing tag (end of the last word) becomes an empty word. joinWords(lineWords(x)) is stable.
+const TOKEN = new RegExp(`<${TIME}>|\\s+|[^\\s<]+|<`, 'g');
+export function lineWords(text: string): LrcWord[] {
+  const out: LrcWord[] = [];
+  let tag: number | null = null;
+  for (const [tok, m, s, f] of text.matchAll(TOKEN)) {
+    const last = out[out.length - 1];
+    if (m !== undefined) tag = toMs(m, s, f);
+    else if (/^\s/.test(tok)) {
+      if (last) last.text += tok;
+    } else if (tag === null && last && !/\s$/.test(last.text)) last.text += tok;
+    else {
+      out.push({ timeMs: tag, text: tok });
+      tag = null;
+    }
+  }
+  if (tag !== null) out.push({ timeMs: tag, text: '' });
+  return out;
+}
+
+export function joinWords(words: LrcWord[]): string {
+  return words.map((w) => (w.timeMs === null ? '' : `<${formatTime(w.timeMs)}>`) + w.text).join('');
+}
+
 export function setLineTime(line: LrcLine, timeMs: number | null): LrcLine {
   if (line.timeMs === null || timeMs === null) return { ...line, timeMs };
   const delta = timeMs - line.timeMs;
