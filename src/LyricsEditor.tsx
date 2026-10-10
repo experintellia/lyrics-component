@@ -1,105 +1,16 @@
-import { memo, useEffect, useLayoutEffect, useReducer, useRef, type Dispatch, type RefObject } from 'react';
+import { useEffect, useMemo, useReducer, useRef, type Dispatch } from 'react';
 import { usePlaybackTime } from './clock';
-import { formatTime, parseLrc, serializeLrc, setLineTime, type LrcDoc, type LrcLine } from './lrc';
+import { hasText, hasWordTimes, initState, reducer, words, type Action, type Step } from './editorModel';
+import { displayText, formatTime, parseLrc, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
 import type { LyricsProps } from './types';
 import { LyricsView } from './LyricsView';
 import { Waveform } from './Waveform';
 
-type Action =
-  | { t: 'load'; doc: LrcDoc }
-  | { t: 'select'; i: number }
-  | { t: 'type'; i: number; text: string }
-  | { t: 'split'; i: number; start: number; end: number }
-  | { t: 'merge'; i: number }
-  | { t: 'paste'; i: number; start: number; end: number; text: string }
-  | { t: 'stamp'; ms: number }
-  | { t: 'nudge'; d: number }
-  | { t: 'clear' }
-  | { t: 'undo' }
-  | { t: 'redo' };
-
-interface State {
-  doc: LrcDoc;
-  past: LrcDoc[];
-  future: LrcDoc[];
-  sel: number;
-  typing: number | null; // line whose typing is grouped into the current undo step
-  emit: 'now' | 'idle' | 'none'; // when to report this doc via onChange
-  focus: { i: number; at: number } | null; // input to focus after a split/merge/paste
-}
-
-const EMPTY: LrcLine = { timeMs: null, text: '' };
-
-// ponytail: unbounded undo history; docs share line objects, so each step is one array.
-function commit(s: State, doc: LrcDoc, emit: State['emit'], extra?: Partial<State>): State {
-  return { ...s, doc, past: [...s.past, s.doc], future: [], typing: null, emit, focus: null, ...extra };
-}
-
-function reducer(s: State, a: Action): State {
-  const lines = s.doc.lines;
-  const put = (next: LrcLine[]) => ({ ...s.doc, lines: next });
-  switch (a.t) {
-    case 'load':
-      return commit(s, a.doc, 'none', { sel: 0 });
-    case 'select':
-      return { ...s, sel: a.i };
-    case 'type': {
-      const next = lines.slice();
-      next[a.i] = { ...(lines[a.i] ?? EMPTY), text: a.text };
-      if (s.typing === a.i) return { ...s, doc: put(next), emit: 'idle' };
-      return commit(s, put(next), 'idle', { typing: a.i });
-    }
-    case 'split': {
-      const cur = lines[a.i] ?? EMPTY;
-      const next = lines.slice();
-      next.splice(a.i, 1, { ...cur, text: cur.text.slice(0, a.start) }, { timeMs: null, text: cur.text.slice(a.end) });
-      return commit(s, put(next), 'idle', { sel: a.i + 1, focus: { i: a.i + 1, at: 0 } });
-    }
-    case 'merge': {
-      const prev = lines[a.i - 1];
-      const cur = lines[a.i];
-      if (!prev || !cur) return s;
-      const next = lines.slice();
-      next.splice(a.i - 1, 2, { ...prev, text: prev.text + cur.text });
-      return commit(s, put(next), 'idle', { sel: a.i - 1, focus: { i: a.i - 1, at: prev.text.length } });
-    }
-    case 'paste': {
-      // Multi-line paste: parsed like a file (so a pasted LRC keeps its stamps), split into rows at the caret.
-      const cur = lines[a.i] ?? EMPTY;
-      const p = parseLrc(a.text);
-      const ins = p.lines.length ? p.lines.slice() : [EMPTY];
-      const last = ins.length - 1;
-      ins[0] = { timeMs: cur.timeMs ?? ins[0].timeMs, text: cur.text.slice(0, a.start) + ins[0].text };
-      const at = ins[last].text.length;
-      ins[last] = { ...ins[last], text: ins[last].text + cur.text.slice(a.end) };
-      const next = lines.slice();
-      next.splice(a.i, 1, ...ins);
-      return commit(s, { meta: [...s.doc.meta, ...p.meta], lines: next }, 'idle', {
-        sel: a.i + last,
-        focus: { i: a.i + last, at },
-      });
-    }
-    case 'stamp':
-    case 'nudge':
-    case 'clear': {
-      const line = lines[s.sel];
-      if (!line || (a.t !== 'stamp' && line.timeMs === null)) return s;
-      const ms = a.t === 'stamp' ? a.ms : a.t === 'clear' ? null : Math.max(0, line.timeMs! + a.d);
-      const next = lines.slice();
-      next[s.sel] = setLineTime(line, ms);
-      return commit(s, put(next), 'now', a.t === 'stamp' ? { sel: Math.min(s.sel + 1, lines.length - 1) } : {});
-    }
-    case 'undo':
-      return s.past.length ? restore(s, s.past[s.past.length - 1], s.past.slice(0, -1), [s.doc, ...s.future]) : s;
-    case 'redo':
-      return s.future.length ? restore(s, s.future[0], [...s.past, s.doc], s.future.slice(1)) : s;
-  }
-}
-
-function restore(s: State, doc: LrcDoc, past: LrcDoc[], future: LrcDoc[]): State {
-  const sel = Math.max(0, Math.min(s.sel, doc.lines.length - 1));
-  return { ...s, doc, past, future, sel, typing: null, emit: 'now', focus: null };
-}
+const STEPS: [Step, string, string?][] = [
+  ['lyrics', 'Lyrics'],
+  ['lines', 'Sync lines'],
+  ['words', 'Sync words', 'optional'],
+];
 
 // Text entry only: a focused checkbox, slider or button (e.g. a host's volume/seek control) must not block S.
 const isTextField = (el: EventTarget | null) =>
@@ -108,6 +19,8 @@ const isTextField = (el: EventTarget | null) =>
     el.matches(
       'textarea, select, input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=color], [type=image])',
     ));
+// Enter and ↑/↓ keep their native meaning on these (a focused slider, <audio>, tool button).
+const NATIVE_KEYS = 'input, select, audio, video, a, button:not(.lyrics-editor-line)';
 
 // No onChange = read-only (host contract): show the display instead of an editor whose edits go nowhere.
 export function LyricsEditor(p: LyricsProps) {
@@ -115,78 +28,99 @@ export function LyricsEditor(p: LyricsProps) {
 }
 
 function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: LyricsProps) {
-  const [s, dispatch] = useReducer(reducer, lrc, (l): State => ({
-    doc: parseLrc(l),
-    past: [],
-    future: [],
-    sel: 0,
-    typing: null,
-    emit: 'none',
-    focus: null,
-  }));
+  const [s, dispatch] = useReducer(reducer, lrc, (l) => initState(parseLrc(l)));
   const { audibleMs, seek } = usePlaybackTime(position, offsetMs, onSeek);
-  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  const seekRef = useRef(seek);
+  seekRef.current = seek;
 
-  // --- onChange: stamps/nudges/clears/undo now; text after 500 ms idle or blur.
+  // --- onChange: every doc change right away. Text becomes a doc change on blur or after 500 ms idle.
   const last = useRef(lrc); // last string received from or emitted to the host
-  const pending = useRef<LrcDoc | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const cb = useRef(onChange);
   cb.current = onChange;
-  const flush = () => {
-    clearTimeout(timer.current);
-    const doc = pending.current;
-    pending.current = null;
-    if (!doc) return;
+  const emit = (doc: LrcDoc) => {
     const out = serializeLrc(doc);
     if (out === last.current) return;
     last.current = out;
     cb.current?.(out);
   };
-
   // Re-parse only when the prop differs from what we last emitted (not on our own echo).
   useEffect(() => {
     if (lrc === last.current) return;
     last.current = lrc;
-    pending.current = null;
     dispatch({ t: 'load', doc: parseLrc(lrc) });
   }, [lrc]);
-
   useEffect(() => {
-    if (s.emit === 'none') return;
-    pending.current = s.doc;
-    clearTimeout(timer.current);
-    if (s.emit === 'now') flush();
-    else timer.current = setTimeout(flush, 500);
+    if (s.emit) emit(s.doc);
   }, [s.doc]);
-
+  useEffect(() => {
+    const t = setTimeout(() => dispatch({ t: 'commit' }), 500);
+    return () => clearTimeout(t);
+  }, [s.draft]);
   // Unmount (e.g. host remounts on track change): don't lose text typed in the last 500 ms.
-  useEffect(() => () => flush(), []);
-
-  useLayoutEffect(() => {
-    const el = s.focus && inputs.current[s.focus.i];
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(s.focus!.at, s.focus!.at);
-  }, [s.focus]);
+  const latest = useRef(s);
+  latest.current = s;
+  useEffect(
+    () => () => {
+      const c = reducer(latest.current, { t: 'commit' });
+      if (c !== latest.current) emit(c.doc);
+    },
+    [],
+  );
 
   const lines = s.doc.lines;
   const line = lines[s.sel] as LrcLine | undefined;
-  const stamped = line?.timeMs != null;
-  const stamp = () => {
-    dispatch({ t: 'stamp', ms: Math.max(0, Math.round(audibleMs)) });
-    inputs.current[s.sel + 1]?.scrollIntoView?.({ block: 'nearest' });
+  const ws = words(line);
+  const wordStep = s.step === 'words';
+  const canStamp = wordStep ? s.word < ws.length : !!line;
+  const ms = Math.max(0, Math.round(audibleMs));
+  const stamp = () => canStamp && dispatch(wordStep ? { t: 'stampWord', ms } : { t: 'stamp', ms });
+  const textLines = lines.filter(hasText);
+  const lineNo = lines.slice(0, s.sel + 1).filter(hasText).length;
+  const wordsDone = textLines.filter((l) => timedWords(l) === words(l).length).length;
+  const label = !canStamp
+    ? 'Stamp'
+    : wordStep
+      ? `Stamp “${ws[s.word].text.trim()}”`
+      : `${line!.timeMs !== null ? 'Re-stamp' : 'Stamp'} ${hasText(line) ? `line ${lineNo}` : 'break'}`;
+  // Line numbers (text lines only) by index, for the out-of-order warning and the "resume" link.
+  const nos = useMemo(() => {
+    let n = 0;
+    return lines.map((l) => (hasText(l) ? ++n : n));
+  }, [lines]);
+  // A stamp here would land before an earlier line's time or after a later one's: warn, don't block
+  // (fixing two wrong lines may need it). ponytail: linear scan per frame; fine for song-length lyrics.
+  let clash = '';
+  if (s.step === 'lines' && line)
+    lines.forEach((l, i) => {
+      if (i === s.sel || l.timeMs === null || !hasText(l)) return;
+      if (i < s.sel && l.timeMs > ms && !clash) clash = `before line ${nos[i]}`;
+      if (i > s.sel && l.timeMs < ms) clash = `after line ${nos[i]}`;
+    });
+  const todo = lines.findIndex((l) => hasText(l) && l.timeMs === null);
+  const resume = todo >= 0 && todo !== s.sel ? { i: todo, no: nos[todo] } : undefined;
+  // Tapping a timed line to fix it rewinds to just before it (never before the previous line's time), so the
+  // next Stamp lands in order instead of at wherever the playhead happened to be.
+  const preRoll = (i: number) => {
+    const t = lines[i].timeMs;
+    if (t === null) return;
+    const prev = lines.slice(0, i).reduce((m, l) => (l.timeMs !== null && l.timeMs <= t ? Math.max(m, l.timeMs) : m), 0);
+    seekRef.current(Math.max(prev, t - 3000));
   };
+  const preRollRef = useRef(preRoll);
+  preRollRef.current = preRoll;
 
-  // Shortcuts only when no text field has focus. The listener is bound once; `keys` sees fresh state.
+  // Shortcuts (sync steps have no text fields, so they always work there). Bound once; `keys` sees fresh state.
   const keys = useRef<(e: KeyboardEvent) => void>(null);
   keys.current = (e) => {
     if (isTextField(e.target)) return;
+    const native = e.target instanceof Element && !!e.target.closest(NATIVE_KEYS);
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();
     if (mod && k === 'z') dispatch({ t: e.shiftKey ? 'redo' : 'undo' });
     else if (mod && k === 'y') dispatch({ t: 'redo' });
-    else if (k === 's' && !mod && !e.altKey && !e.repeat) stamp();
+    else if (s.step === 'lyrics' || mod || e.altKey) return;
+    else if (k === 's' || (k === 'enter' && !native)) !e.repeat && stamp();
+    else if ((k === 'arrowup' || k === 'arrowdown') && !native) dispatch({ t: 'move', d: k === 'arrowup' ? -1 : 1 });
     else return;
     e.preventDefault();
   };
@@ -196,95 +130,292 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     return () => window.removeEventListener('keydown', h);
   }, []);
 
+  // Keep the selected line in view (CSS scroll-margin keeps it clear of the sticky Stamp button). Also on
+  // doc changes: stamping the last line keeps it selected but adds its tools, so the row grows.
+  const list = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    list.current?.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [s.sel, s.step, lines]);
+
+  // The editor re-renders every animation frame while playing; the list only when its inputs change.
   const dur = position.durationMs;
+  const rows = useMemo(() => {
+    let no = 0;
+    return lines.map((l, i) => {
+      const text = displayText(l.text);
+      if (!text && l.timeMs === null) return <li key={i} className="lyrics-editor-gap" />; // stanza break
+      if (text) no++;
+      const sel = i === s.sel;
+      const late = dur > 0 && l.timeMs !== null && l.timeMs > dur;
+      return (
+        <li key={i} className="lyrics-editor-row" aria-current={sel || undefined} data-late={late || undefined}>
+          <button
+            type="button"
+            className="lyrics-editor-line"
+            onClick={() => {
+              dispatch({ t: 'select', i });
+              preRollRef.current(i);
+            }}
+          >
+            <span className="lyrics-editor-no">{text ? no : '♪'}</span>
+            <span className="lyrics-editor-time" title={late ? 'After the end of the track' : undefined}>
+              {l.timeMs === null ? '—' : formatTime(l.timeMs)}
+            </span>
+            <span className="lyrics-editor-text" dir="auto">
+              {text || 'Instrumental break'}
+              {s.step === 'words' && text && (
+                <small className="lyrics-editor-badge">
+                  {timedWords(l) === words(l).length ? 'words ✓' : `${timedWords(l)}/${words(l).length} words`}
+                </small>
+              )}
+            </span>
+          </button>
+          {sel &&
+            (s.step === 'words' ? (
+              <WordTools line={l} word={s.word} dispatch={dispatch} seek={(t) => seekRef.current(t)} />
+            ) : (
+              <LineTools line={l} dispatch={dispatch} seek={(t) => seekRef.current(t)} resume={resume} />
+            ))}
+        </li>
+      );
+    });
+  }, [lines, s.sel, s.word, s.step, dur, resume?.i]);
+
+  const undoRedo = (
+    <span className="lyrics-editor-undo">
+      <button type="button" disabled={!s.past.length} onClick={() => dispatch({ t: 'undo' })}>Undo</button>
+      <button type="button" disabled={!s.future.length} onClick={() => dispatch({ t: 'redo' })}>Redo</button>
+    </span>
+  );
+
+  const synced = textLines.filter((l) => l.timeMs !== null).length;
+  const allSynced = synced === textLines.length;
+  let banner;
+  if (!textLines.length) banner = <>No lyrics yet. Add them in step 1 first.</>;
+  else if (wordStep)
+    banner = (
+      <>
+        Optional, for word-by-word highlighting. Tap a line, press play, then tap <b>Stamp</b> as each highlighted
+        word starts. After its last word, the next line comes up.
+      </>
+    );
+  else if (allSynced)
+    banner = <>All lines are synced ✓ Play it back to check. Tap a line to fix it, or time single words in step 3 (optional).</>;
+  else
+    banner = (
+      <>
+        {synced ? '' : 'These lyrics have no timing yet. '}Press play, then tap <b>Stamp</b> the moment each
+        highlighted line starts.
+      </>
+    );
+  // Always on screen in the sticky dock, so the user knows where they are even with the steps scrolled away.
+  const progress = !textLines.length
+    ? ''
+    : wordStep
+      ? !ws.length
+        ? `Line ${lineNo}`
+        : s.word < ws.length
+          ? `Line ${lineNo}: word ${s.word + 1} of ${ws.length}`
+          : `Line ${lineNo}: all words timed ✓`
+      : allSynced
+        ? line
+          ? `All ${textLines.length} lines synced ✓`
+          : '' // the done card says it
+        : `${synced} of ${textLines.length} lines synced`;
+
   return (
     <div className="lyrics-editor">
-      <Waveform peaks={peaks} timeMs={audibleMs} lines={lines} onSeek={seek} />
-      <div className="lyrics-editor-bar" role="toolbar" aria-label="Line tools">
-        <span className="lyrics-editor-now">{formatTime(audibleMs)}</span>
-        <button type="button" disabled={!s.past.length} onClick={() => dispatch({ t: 'undo' })}>Undo</button>
-        <button type="button" disabled={!s.future.length} onClick={() => dispatch({ t: 'redo' })}>Redo</button>
-        {[-100, -10, 10, 100].map((d) => (
-          <button key={d} type="button" disabled={!stamped} onClick={() => dispatch({ t: 'nudge', d })}>
-            {d < 0 ? '−' : '+'}
-            {Math.abs(d)} ms
+      <div className="lyrics-editor-tabs" role="tablist" aria-label="Editor steps">
+        {STEPS.map(([id, name, note], k) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={s.step === id}
+            onClick={() => dispatch({ t: 'step', step: id })}
+          >
+            <span className="lyrics-editor-stepno" aria-hidden="true">{k + 1}</span> {name}
+            {note && <small aria-hidden="true">{note}</small>}
           </button>
         ))}
-        <button type="button" disabled={!stamped} onClick={() => dispatch({ t: 'clear' })}>Clear</button>
-        {/* ponytail: "play from line" = seek; whether it plays is the host's playing state. */}
-        <button type="button" disabled={!stamped} onClick={() => seek(line!.timeMs!)}>Play line</button>
       </div>
-      <ol className="lyrics-editor-lines" onBlur={flush}>
-        {(lines.length ? lines : [EMPTY]).map((l, i) => (
-          <Row
-            key={i}
-            line={l}
-            i={i}
-            selected={i === s.sel}
-            late={dur > 0 && l.timeMs !== null && l.timeMs > dur}
-            dispatch={dispatch}
-            inputs={inputs}
+
+      {s.step === 'lyrics' ? (
+        <div role="tabpanel" aria-label="Lyrics" className="lyrics-editor-panel">
+          <p className="lyrics-editor-banner" id="lyrics-editor-howto">
+            Type or paste the lyrics — one line per row; blank line between verses.
+          </p>
+          <textarea
+            className="lyrics-editor-text-input"
+            aria-label="Lyrics text"
+            aria-describedby="lyrics-editor-howto"
+            dir="auto"
+            rows={Math.max(8, s.draft.split('\n').length + 1)} // grows with the text; the page scrolls, not the box
+            value={s.draft}
+            onChange={(e) => dispatch({ t: 'draft', text: e.target.value })}
+            onBlur={() => dispatch({ t: 'commit' })}
           />
-        ))}
-      </ol>
-      <p className="lyrics-editor-hint">
-        S stamps the selected line (when no text field has focus). Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z or Ctrl+Y redo.
-      </p>
-      <button type="button" className="lyrics-editor-stamp" onPointerDown={(e) => e.preventDefault()} onClick={stamp}>
-        Stamp
-      </button>
+          <div className="lyrics-editor-dock">
+            <p className="lyrics-editor-progress">
+              {s.draft.trim()
+                ? `${s.draft.split('\n').filter((r) => r.trim()).length} lines`
+                : dur
+                  ? 'Type or paste at least one line to continue.'
+                  : 'Load the song and add at least one line to continue.'}
+            </p>
+            {undoRedo}
+            <button
+              type="button"
+              className="lyrics-editor-primary"
+              disabled={!s.draft.trim()}
+              onClick={() => dispatch({ t: 'step', step: 'lines' })}
+            >
+              Next: sync to the music →
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div role="tabpanel" aria-label={wordStep ? 'Sync words' : 'Sync lines'} className="lyrics-editor-panel">
+          <p className="lyrics-editor-banner">{banner}</p>
+          <Waveform peaks={peaks} timeMs={audibleMs} lines={lines} onSeek={seek} />
+          <p className="lyrics-editor-tip">
+            {wordStep
+              ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line to time its words (it rewinds to just before the line).`
+              : 'Tap any line to fix its time (it rewinds to just before the line).'}
+            <span className="lyrics-editor-hint"> Keys: S or Enter = Stamp · ↑/↓ = choose line · Ctrl/⌘+Z = undo</span>
+          </p>
+          {textLines.length ? (
+            <ol ref={list} className="lyrics-editor-lines">{rows}</ol>
+          ) : (
+            <button type="button" className="lyrics-editor-primary" onClick={() => dispatch({ t: 'step', step: 'lyrics' })}>
+              ← Add lyrics
+            </button>
+          )}
+          <div className="lyrics-editor-dock" data-done={(!wordStep && allSynced && !line) || undefined}>
+            <p className="lyrics-editor-progress">
+              <span className="lyrics-editor-now" aria-label="Playback position">{formatTime(audibleMs)}</span>
+              {!position.playing && <b> · paused</b>}
+              {clash ? (
+                <b className="lyrics-editor-warn"> · ⚠ the playhead is {clash}: play from just before this line first</b>
+              ) : (
+                progress && <span> · {progress}</span>
+              )}
+            </p>
+            {undoRedo}
+            {!wordStep && allSynced && !line ? (
+              // Just finished: a done card instead of a "Re-stamp" button that invites an accidental overwrite.
+              <div className="lyrics-editor-done" role="status">
+                <p>
+                  <b>All {textLines.length} lines synced ✓</b> Play it from the start to check. Tap any line to fix it.
+                </p>
+                <button type="button" onClick={() => seek(0)}>⏮ Back to the start</button>
+                <button type="button" onClick={() => dispatch({ t: 'step', step: 'words' })}>
+                  Next: sync words (optional) →
+                </button>
+              </div>
+            ) : (
+              /* preventDefault: tapping Stamp must not steal focus or pop up the iOS keyboard. Paused: Stamp is
+                 outlined, so the host's Play is the first thing to press. */
+              <button
+                type="button"
+                className="lyrics-editor-stamp"
+                disabled={!canStamp}
+                data-paused={!position.playing || undefined}
+                data-warn={!!clash || undefined}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={stamp}
+              >
+                {label}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// Memoised: the editor re-renders every animation frame while playing; rows only when their line changes.
-// ponytail: <input> rows don't wrap long text (they scroll); a textarea with auto-height if that bites.
-const Row = memo(function Row({ line, i, selected, late, dispatch, inputs }: {
+interface ToolProps {
   line: LrcLine;
-  i: number;
-  selected: boolean;
-  late: boolean;
   dispatch: Dispatch<Action>;
-  inputs: RefObject<(HTMLInputElement | null)[]>;
-}) {
+  seek: (ms: number) => void;
+  resume?: { i: number; no: number }; // first untimed line, if it isn't the selected one
+}
+
+// ponytail: "play from here" = seek; whether it plays is the host's playing state (the host owns transport).
+const timedWords = (l: LrcLine) => words(l).filter((w) => w.timeMs !== null).length;
+
+const PlayHere = ({ line, seek }: Omit<ToolProps, 'dispatch'>) => (
+  <button type="button" disabled={line.timeMs === null} onClick={() => seek(line.timeMs!)}>▶ Play from here</button>
+);
+
+function LineTools({ line, dispatch, seek, resume }: ToolProps) {
+  const back = resume && (
+    <button type="button" className="lyrics-editor-link" onClick={() => dispatch({ t: 'select', i: resume.i })}>
+      Back to line {resume.no} →
+    </button>
+  );
+  if (line.timeMs === null)
+    return (
+      <div className="lyrics-editor-tools">
+        <p className="lyrics-editor-tip">Not synced yet: press play and tap <b>Stamp</b> when this line starts.</p>
+        {back}
+      </div>
+    );
+  // ponytail: ±0.1 s only; finer steps aren't audible (the roadmap's ±10 ms were dropped after user review).
   return (
-    <li className="lyrics-editor-row" aria-current={selected || undefined} data-late={late || undefined}>
+    <div className="lyrics-editor-tools" role="group" aria-label="Fix this line">
+      <p className="lyrics-editor-tip">
+        Wrong time? Press play, then tap <b>Re-stamp</b> when the line starts. Or nudge it:
+      </p>
+      {[-100, 100].map((d) => (
+        <button key={d} type="button" className="lyrics-editor-nudge" onClick={() => dispatch({ t: 'nudge', d })}>
+          {d < 0 ? '−0.1 s' : '+0.1 s'}
+        </button>
+      ))}
+      <PlayHere line={line} seek={seek} />
+      {back}
+      <button type="button" className="lyrics-editor-quiet" onClick={() => dispatch({ t: 'clear' })}>Clear time</button>
+    </div>
+  );
+}
+
+function WordTools({ line, word, dispatch, seek }: ToolProps & { word: number }) {
+  const ws = words(line);
+  return (
+    <div className="lyrics-editor-tools" role="group" aria-label="Word timing">
+      <div className="lyrics-editor-chips">
+        {ws.map((w, k) => (
+          <button
+            key={k}
+            type="button"
+            className="lyrics-editor-chip"
+            aria-current={k === word || undefined}
+            data-timed={w.timeMs !== null || undefined}
+            onClick={() => dispatch({ t: 'pickWord', w: k })}
+          >
+            {w.text.trim()}
+            <small>{w.timeMs === null ? '—' : formatTime(w.timeMs)}</small>
+          </button>
+        ))}
+      </div>
+      <p className="lyrics-editor-tip">
+        {!ws.length
+          ? 'No words on this line.'
+          : word < ws.length
+            ? 'Tap Stamp as the blue word starts. After the last word, the next line opens. Tap a word to re-time from that word on.'
+            : 'All words timed. Tap a word to re-time from that word on.'}
+      </p>
+      <PlayHere line={line} seek={seek} />
+      <button type="button" onClick={() => dispatch({ t: 'move', d: 1 })}>Next line →</button>
       <button
         type="button"
-        className="lyrics-editor-time"
-        title={late ? 'Beyond the end of the track' : undefined}
-        onClick={() => dispatch({ t: 'select', i })}
+        className="lyrics-editor-quiet"
+        disabled={!hasWordTimes(line)}
+        onClick={() => dispatch({ t: 'clearWords' })}
       >
-        {line.timeMs === null ? '--:--.--' : formatTime(line.timeMs)}
+        Clear word timing
       </button>
-      <input
-        ref={(el) => {
-          inputs.current[i] = el;
-        }}
-        dir="auto"
-        aria-label={`Line ${i + 1}`}
-        value={line.text}
-        onFocus={() => dispatch({ t: 'select', i })}
-        onChange={(e) => dispatch({ t: 'type', i, text: e.target.value })}
-        onKeyDown={(e) => {
-          const { selectionStart: a, selectionEnd: b } = e.currentTarget;
-          // keyCode 229: WebKit fires compositionend before the IME-confirming Enter, so isComposing is false.
-          if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-            e.preventDefault();
-            dispatch({ t: 'split', i, start: a ?? 0, end: b ?? 0 });
-          } else if (e.key === 'Backspace' && i > 0 && a === 0 && b === 0) {
-            e.preventDefault();
-            dispatch({ t: 'merge', i });
-          }
-        }}
-        onPaste={(e) => {
-          const text = e.clipboardData.getData('text/plain');
-          if (!text.includes('\n')) return;
-          e.preventDefault();
-          const { selectionStart: a, selectionEnd: b } = e.currentTarget;
-          dispatch({ t: 'paste', i, start: a ?? 0, end: b ?? 0, text });
-        }}
-      />
-    </li>
+    </div>
   );
-});
+}

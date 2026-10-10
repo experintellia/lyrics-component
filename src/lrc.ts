@@ -80,13 +80,15 @@ export function parseLrc(input: string): LrcDoc {
       continue;
     }
     if (!isLrc) {
-      // ponytail: plain text keeps blank lines (stanza breaks); LRC drops them.
+      // Plain text keeps blank lines (stanza breaks), except leading ones.
       if (line || head.length) head.push({ timeMs: null, text: rawLine.trimEnd() });
       continue;
     }
     const tags = LEADING_TAGS.exec(line);
     if (!tags) {
-      if (line) push({ timeMs: null, text: line });
+      // LRC keeps one blank line after text as a stanza break (the editor writes them); leading and repeated ones go.
+      const prev = (blocks.length ? blocks[blocks.length - 1] : head).at(-1);
+      if (line || prev?.text) push({ timeMs: null, text: line });
       continue;
     }
     // Several tags → one line per tag (word tags are relative to the first). Empty text = instrumental gap.

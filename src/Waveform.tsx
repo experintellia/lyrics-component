@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { formatTime, type LrcLine } from './lrc';
+import { displayText, formatTime, type LrcLine } from './lrc';
 import type { Peaks } from './types';
 
 const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1000); // ruler tick spacing
@@ -71,8 +71,13 @@ export function Waveform({ peaks, timeMs, lines, onSeek }: {
       ctx.fillRect(x(t), 0, dpr, 6 * dpr);
       ctx.fillText(formatTime(t).replace(/\.\d+$/, ''), x(t) + 3 * dpr, 18 * dpr);
     }
+    // Stamp markers below the ruler, each tagged with its line number at the bottom.
+    let no = 0;
     for (const l of lines) {
-      if (l.timeMs !== null && l.timeMs >= start && l.timeMs <= start + span) ctx.fillRect(x(l.timeMs), 22 * dpr, dpr, h);
+      if (displayText(l.text)) no++;
+      if (l.timeMs === null || l.timeMs < start || l.timeMs > start + span) continue;
+      ctx.fillRect(x(l.timeMs), 22 * dpr, dpr, h);
+      if (displayText(l.text)) ctx.fillText(String(no), x(l.timeMs) + 3 * dpr, h - 4 * dpr);
     }
     ctx.fillStyle = cssVar('--lyrics-accent', '#2a7ae2');
     ctx.fillRect(x(timeMs) - dpr, 0, 2 * dpr, h);
@@ -85,9 +90,11 @@ export function Waveform({ peaks, timeMs, lines, onSeek }: {
 
   return (
     <div className="lyrics-wave">
-      <canvas ref={ref} onClick={click} aria-label="Waveform: click to seek" />
-      <button type="button" aria-label="Zoom out" onClick={() => setSpan((s) => clampSpan(s * 2))}>−</button>
-      <button type="button" aria-label="Zoom in" onClick={() => setSpan((s) => clampSpan(s / 2))}>+</button>
+      <canvas ref={ref} onClick={click} aria-label="Waveform: click to seek" title="Click to seek" />
+      <div className="lyrics-wave-zoom">
+        <button type="button" onClick={() => setSpan((s) => clampSpan(s / 2))}>Zoom in</button>
+        <button type="button" onClick={() => setSpan((s) => clampSpan(s * 2))}>Zoom out</button>
+      </div>
     </div>
   );
 }

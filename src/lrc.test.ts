@@ -88,9 +88,10 @@ describe('lines', () => {
     ]);
     expect(serializeLrc(doc)).toBe('[00:10.00]Chorus\n[00:20.00]Verse\n[00:30.00]Chorus\n');
   });
-  it('keeps empty-text stamps as instrumental gaps, drops untagged blank lines in LRC', () => {
-    expect(parseLrc('[00:01.00]a\n\n[00:05.00]\n[00:09.00]b').lines).toEqual([
+  it('keeps empty-text stamps as instrumental gaps; one blank line after text is a stanza break', () => {
+    expect(parseLrc('\n[00:01.00]a\n\n\n[00:05.00]\n\n[00:09.00]b').lines).toEqual([
       { timeMs: 1000, text: 'a' },
+      { timeMs: null, text: '' },
       { timeMs: 5000, text: '' },
       { timeMs: 9000, text: 'b' },
     ]);
