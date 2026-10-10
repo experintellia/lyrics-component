@@ -1,43 +1,43 @@
 import { expect, test, type Page } from '@playwright/test';
-
-// ponytail: no @types/node (no new deps), so Node's Buffer is untyped here. Playwright needs a real Buffer.
-declare const Buffer: any;
-
-/** 5 s, 440 Hz, 16-bit mono PCM WAV, built in memory (no binary fixtures in git). */
-function wav(seconds = 5, rate = 8000) {
-  const n = seconds * rate;
-  const b = Buffer.alloc(44 + n * 2);
-  b.write('RIFF', 0);
-  b.writeUInt32LE(36 + n * 2, 4);
-  b.write('WAVEfmt ', 8);
-  b.writeUInt32LE(16, 16); // fmt chunk size
-  b.writeUInt16LE(1, 20); // PCM
-  b.writeUInt16LE(1, 22); // mono
-  b.writeUInt32LE(rate, 24);
-  b.writeUInt32LE(rate * 2, 28); // byte rate
-  b.writeUInt16LE(2, 32); // block align
-  b.writeUInt16LE(16, 34); // bits per sample
-  b.write('data', 36);
-  b.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / rate)), 44 + i * 2);
-  return b;
-}
+import { audioTime, loadAudio, loadLyrics, seek } from './fixtures';
 
 const LRC = '[ti:Tone]\n[00:00.50]First line\n[00:02.00]Second line\n[00:03.50]Third line\n';
 
 async function load(page: Page) {
   await page.goto('/');
-  await page.getByLabel('Audio').setInputFiles({ name: 'tone.wav', mimeType: 'audio/wav', buffer: wav() });
-  await page.getByLabel('Lyrics').setInputFiles({ name: 'tone.lrc', mimeType: 'text/plain', buffer: Buffer.from(LRC) });
+  await loadAudio(page);
+  await loadLyrics(page, 'tone.lrc', LRC);
+  await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true'); // synced: preview
   await expect(page.locator('.lyrics-line')).toHaveText(['First line', 'Second line', 'Third line']);
-  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(5, 1);
 }
 
-const audioTime = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime);
+async function downloadText(page: Page) {
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Download/ }).click();
+  const file = await download;
+  let text = '';
+  for await (const chunk of await file.createReadStream()) text += chunk;
+  return { name: file.suggestedFilename(), text };
+}
+
+test('empty state: audio and optional lyrics pickers; type lyrics, then Next goes to syncing', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.demo-file label')).toHaveText([/^Audio Choose audio file/, /^Lyrics \(optional\)/]);
+  await expect(page.getByText('Load the song and add at least one line to continue.')).toBeVisible(); // why Next is disabled
+  await expect(page.getByRole('tab', { name: 'Edit' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Lyrics', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.getByLabel('Lyrics text').fill('One\nTwo\n\nThree');
+  await page.getByRole('button', { name: /^Next: sync/ }).click();
+  await expect(page.getByRole('tab', { name: 'Sync lines' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.lyrics-editor-text')).toHaveText(['One', 'Two', 'Three']);
+  await expect(page.getByText('0 of 3 lines synced')).toBeVisible();
+  await expect(page.locator('.demo-file label').nth(1)).toContainText('3 typed lines'); // no "no file chosen" contradiction
+  await expect(page.getByRole('button', { name: /Download/ })).toBeDisabled(); // nothing synced yet
+});
 
 test('view highlights the current line and click seeks the audio', async ({ page }) => {
   await load(page);
-  await page.locator('audio').evaluate((a: HTMLAudioElement) => (a.currentTime = 2.2));
+  await seek(page, 2.2);
   await expect(page.getByRole('button', { name: 'Second line' })).toHaveAttribute('aria-current', 'true');
 
   await page.getByRole('button', { name: 'Third line' }).click();
@@ -45,33 +45,58 @@ test('view highlights the current line and click seeks the audio', async ({ page
   await expect.poll(() => audioTime(page)).toBeCloseTo(3.5, 1);
 });
 
-test('edit: play, stamp a line, download LRC with the new stamp', async ({ page }) => {
-  await load(page);
-  await page.getByLabel('Edit').check();
-  await expect(page.getByLabel('Line 1')).toHaveValue('First line');
+test('full flow: plain text → sync every line → sync words → preview highlights line and word → download', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'song.txt', 'First line\nSecond line here\n\nThird line\nFourth line\n');
+  // Plain text opens the editor on Sync lines, explaining there's no timing yet.
+  await expect(page.getByRole('tab', { name: 'Edit' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Sync lines' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText(/no timing yet/)).toBeVisible();
+  // Preview of plain text points back to syncing.
+  await page.getByRole('tab', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Start syncing →' }).click();
+  await expect(page.getByRole('tab', { name: 'Sync lines' })).toHaveAttribute('aria-selected', 'true');
 
-  // Muted + called from the page: headless WebKit won't autoplay otherwise.
-  await page.locator('audio').evaluate(async (a: HTMLAudioElement) => {
-    a.muted = true;
-    await a.play();
-  });
-  await expect.poll(() => audioTime(page)).toBeGreaterThan(1);
-  await page.locator('audio').evaluate((a: HTMLAudioElement) => a.pause());
-  const ms = Math.round((await audioTime(page)) * 1000);
+  const stamp = page.getByRole('button', { name: /^(Re-s|S)tamp/ });
+  await expect(stamp).toHaveText('Stamp line 1');
+  await expect(page.getByLabel('Playback position').locator('..')).toContainText('paused');
+  // The demo's own Play button sits right under Stamp (muted first: headless WebKit won't play otherwise).
+  await page.locator('audio').evaluate((a: HTMLAudioElement) => (a.muted = true));
+  await page.getByRole('button', { name: '▶ Play' }).click();
+  await expect(page.getByRole('button', { name: '❚❚ Pause' })).toBeVisible();
+  for (let k = 0; k < 4; k++) {
+    await expect.poll(() => audioTime(page)).toBeGreaterThan(0.4 + k * 0.9);
+    await stamp.click();
+    if (k < 3) await expect(stamp).toHaveText(`Stamp line ${k + 2}`);
+  }
+  await page.getByRole('button', { name: '❚❚ Pause' }).click();
+  await expect(page.getByRole('status')).toContainText('All 4 lines synced ✓'); // done card replaces Stamp
+  await expect(stamp).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Download/ })).toHaveAttribute('data-primary', 'true'); // done: download is the next step
+  await expect(page.locator('.lyrics-editor-time', { hasText: '—' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Stamp', exact: true }).click(); // first row is selected
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: /Download/ }).click();
-  const file = await download;
-  expect(file.suggestedFilename()).toBe('tone.lrc');
-  let text = '';
-  for await (const chunk of await file.createReadStream()) text += chunk;
+  // Word timing on line 2 (paused; seek, then stamp each word).
+  await page.getByRole('tab', { name: 'Sync words' }).click();
+  await page.getByRole('button', { name: /Second line here/ }).click();
+  for (const [t, w] of [[1.5, 'Second'], [1.7, 'line'], [1.9, 'here']] as const) {
+    await seek(page, t);
+    await expect(page.getByLabel('Playback position')).toHaveText(`00:0${t.toFixed(2)}`);
+    await expect(stamp).toHaveText(`Stamp “${w}”`);
+    await stamp.click();
+  }
+  await expect(page.getByText('1 of 4 lines have word timing')).toBeVisible();
 
-  const m = text.match(/^\[(\d+):(\d+\.\d+)\]First line$/m);
-  expect(m, text).not.toBeNull();
-  expect(Math.abs(+m![1] * 60000 + +m![2] * 1000 - ms)).toBeLessThan(50);
-  expect(text).toContain('[ti:Tone]');
-  expect(text).toContain('[00:02.00]Second line');
+  await page.getByRole('tab', { name: 'Preview' }).click();
+  await seek(page, 1.8);
+  const current = page.locator('.lyrics-view [aria-current]');
+  await expect(current).toHaveText('Second line here');
+  await expect(current.locator('.lyrics-upcoming')).toHaveText('here'); // "Second line" sung, "here" not yet
+
+  const { name, text } = await downloadText(page);
+  expect(name).toBe('song.lrc');
+  for (const l of ['First line', 'Third line', 'Fourth line']) expect(text).toMatch(new RegExp(`^\\[\\d\\d:\\d\\d\\.\\d{2,3}\\]${l}$`, 'm'));
+  expect(text).toMatch(/^\[00:01\.50\]<00:01\.50>Second <00:01\.70>line <00:01\.90>here\n\n\[/m); // stanza break kept
 });
 
 test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth scroll under reduced motion', async ({ page }) => {
@@ -94,8 +119,8 @@ test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth sc
   );
   expect(unscoped).toEqual([]);
 
-  await page.getByLabel('Edit').check();
-  for (const el of await page.locator('.lyrics-editor button, .lyrics-editor-row input').all()) {
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  for (const el of await page.locator('.lyrics-editor button, .demo-tabs button, .demo-tabs summary, .demo-transport button').all()) {
     const box = (await el.boundingBox())!;
     expect(Math.min(box.width, box.height), await el.evaluate((e) => e.outerHTML)).toBeGreaterThanOrEqual(44);
   }
@@ -106,7 +131,7 @@ test('peaks load (waveform drawn across the canvas) and zoom redraws it', async 
   const warnings: string[] = [];
   page.on('console', (m) => m.type() === 'warning' && warnings.push(m.text()));
   await load(page);
-  await page.getByLabel('Edit').check();
+  await page.getByRole('tab', { name: 'Edit' }).click();
   const canvas = page.locator('.lyrics-wave canvas');
   // Without peaks only the playhead and stamp markers cross the middle row; with peaks every column does.
   const midRowInked = () =>
@@ -124,30 +149,37 @@ test('peaks load (waveform drawn across the canvas) and zoom redraws it', async 
   await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL())).not.toBe(before);
 });
 
-test('S stamps while a checkbox has focus; unsaved edits trigger the beforeunload guard', async ({ page }) => {
+test('S stamps while a tab button has focus; unsaved edits trigger the beforeunload guard', async ({ page }) => {
   await load(page);
-  await page.getByLabel('Edit').check();
-  await page.getByLabel('Edit').focus();
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  await page.getByRole('tab', { name: 'Edit' }).focus();
   await page.keyboard.press('s');
   await expect(page.locator('.lyrics-editor-time').first()).toHaveText('00:00.00');
-  await expect(page.getByRole('button', { name: /Download/ })).toHaveText(/\*$/); // dirty
+  await expect(page.getByRole('button', { name: /Download/ })).toContainText('unsaved changes'); // dirty
 
   const dialog = new Promise<string>((resolve) => page.once('dialog', (d) => (resolve(d.type()), d.dismiss())));
   await page.close({ runBeforeUnload: true });
   expect(await dialog).toBe('beforeunload');
 });
 
-test('tap-along on a phone: the newly selected row never hides under the sticky Stamp button', async ({ page }) => {
+test('tap-along on a phone: the selected line stays clear of the Stamp bar, and Stamp of the pinned audio', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
   await page.goto('/');
-  const lines = Array.from({ length: 20 }, (_, i) => `Line number ${i + 1}`).join('\n');
-  await page.getByLabel('Lyrics').setInputFiles({ name: 'l.txt', mimeType: 'text/plain', buffer: Buffer.from(lines) });
-  await page.getByLabel('Edit').check();
-  const stamp = page.getByRole('button', { name: 'Stamp', exact: true });
+  await loadAudio(page);
+  await loadLyrics(page, 'l.txt', Array.from({ length: 20 }, (_, i) => `Line number ${i + 1}`).join('\n'));
+  const stamp = page.getByRole('button', { name: /^(Re-s|S)tamp/ });
+  const transport = (await page.locator('.demo-transport').boundingBox())!;
   for (let i = 0; i < 19; i++) {
     await stamp.click();
-    const sel = (await page.locator('.lyrics-editor-row[aria-current] input').boundingBox())!;
+    const sel = (await page.locator('.lyrics-editor-row[aria-current] .lyrics-editor-line').boundingBox())!;
     const btn = (await stamp.boundingBox())!;
     expect(sel.y + sel.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(btn.y);
+    expect(btn.y + btn.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(transport.y);
+    // Step tabs stick right under the Preview/Edit bar, and the selected line stays below them.
+    const nav = (await page.locator('.demo-tabs').boundingBox())!;
+    const tabs = (await page.locator('.lyrics-editor-tabs').boundingBox())!;
+    expect(Math.abs(tabs.y - (nav.y + nav.height)), `after stamp ${i + 1}`).toBeLessThan(2);
+    expect(sel.y, `after stamp ${i + 1}`).toBeGreaterThanOrEqual(tabs.y + tabs.height);
   }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390); // no sideways scroll
 });

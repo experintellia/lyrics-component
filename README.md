@@ -25,8 +25,47 @@ React 19 is a peer dependency. There are no other runtime dependencies.
 ```ts
 import { LyricsView, LyricsEditor, peaksFromAudio } from '@experintellia/lyrics';
 import '@experintellia/lyrics/style.css';
-import { parseLrc, serializeLrc } from '@experintellia/lyrics/lrc'; // no React
+import { parseLrc, serializeLrc, lineWords, joinWords } from '@experintellia/lyrics/lrc'; // no React
 ```
+
+## What it shows
+
+`<LyricsView>` picks the display mode from the lyrics themselves, per file and per line. There is no prop:
+
+- **Plain text** (no time tags): scrollable text, nothing highlighted.
+- **Line-synced** (`[mm:ss.xx]Line`): the current line is highlighted and kept in view; tapping a line seeks.
+- **Word/phrase-synced** (enhanced LRC, `[00:12.00]<00:12.00>Carry <00:12.40>me <00:12.70>home`):
+  inside the current line, words already sung take the accent colour and the rest stay muted. An
+  untimed word goes with the timed word before it, so tagging only some words gives phrase timing.
+
+A blank line shows as a stanza gap in every mode (in LRC, one blank line after a lyric line is kept).
+
+## Editing
+
+`<LyricsEditor>` walks the user through three steps (tabs at the top):
+
+1. **Lyrics**: one text box, one line per row, a blank line between verses. Opens here when `lrc` is empty.
+2. **Sync lines**: press play (host transport), then tap **Stamp** as each highlighted line starts.
+   The Stamp button names its target ("Stamp line 3", or "Re-stamp line 3" for a line that has a
+   time). Tapping a timed line selects it, rewinds (via `onSeek`) to just before it, and shows nudge
+   (±0.1 s), "play from here", "back to the first unsynced line" and clear tools. While the host is
+   paused, Stamp is drawn outlined so the host's Play stands out; a stamp that would land out of order
+   is flagged (allowed, with a warning). Stamping the last untimed line replaces Stamp with a "done"
+   card (back to the start, or on to word timing) until a line is tapped again.
+   Keys: S or Enter stamps, ↑/↓ select, Ctrl/⌘+Z undoes. Opens here when `lrc` has lines, so plain
+   text goes straight to syncing.
+3. **Sync words** (optional): tap a line, then Stamp each word as it starts; after the last word the
+   next line comes up ("Next line →" skips). Tap a word chip to re-time from there. Every line shows
+   its progress ("0/7 words", "3/7 words", "words ✓").
+
+Editing a line's text in step 1 keeps the stamps of unchanged lines. Undo/redo covers every step.
+The sticky bottom bar holds Undo/Redo, Stamp and a status line (playhead, "paused" while the host is
+not playing, and progress such as "6 of 16 lines synced" or "Line 5: word 4 of 7"), so it stays
+clear where you are. The step tabs are sticky too: if your page has its own sticky header, set
+`--lyrics-sticky-top` to its height so the tabs stick right under it. The component has no play button (the host
+owns transport): put yours right under it. On phones, set `--lyrics-sticky-bottom` to the height of
+any transport bar you pin at the bottom so the Stamp bar sits above it. The waveform marks each
+stamp with its line number.
 
 ## Host contract
 
@@ -69,6 +108,8 @@ Plain CSS. Set any of these on an ancestor:
 | `--lyrics-bg` | background | transparent |
 | `--lyrics-muted` | other lines, borders, hints | `#767676` / `#888` |
 | `--lyrics-radius` | corners (0 is fine) | `8px` / `6px` |
+| `--lyrics-sticky-bottom` | editor's sticky Stamp bar offset from the viewport bottom | `0px` |
+| `--lyrics-sticky-top` | editor's sticky step tabs offset from the viewport top | `0px` |
 
 Fonts are inherited. Auto-scroll is not smooth under `prefers-reduced-motion: reduce`.
 
@@ -82,7 +123,12 @@ pnpm test         # vitest (jsdom)
 pnpm build        # library -> dist/ (committed)
 pnpm build:demo   # demo -> demo-dist/
 pnpm e2e          # Playwright on Chromium and WebKit, against the built demo
+pnpm screenshots  # PNGs of the key UI states (390×844 WebKit, 1280×800 Chromium) -> screenshots/
 ```
+
+CI runs all of the above on Linux and uploads `screenshots/` as an artifact. On pushes to `main`,
+`v*` tags and manual runs, a macOS job also runs the WebKit e2e project and a smoke test in real
+**Safari** (`safaridriver`, driven by `e2e/safari.mjs` over plain W3C WebDriver HTTP).
 
 ## Release
 

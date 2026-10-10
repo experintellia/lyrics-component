@@ -61,16 +61,48 @@ button.lyrics-line[aria-current] {
     background: rgb(128 128 128 / 0.15);
   }
 }
+
+/* word/phrase-synced current line: sung words keep the accent, upcoming ones stay muted */
+button.lyrics-line[aria-current] .lyrics-upcoming {
+  color: var(--lyrics-muted, #767676);
+}
+
+/* phones: larger text and more air between tap targets */
+@media (max-width: 480px) {
+  .lyrics-view {
+    padding: 4px;
+    font-size: max(18px, 1em);
+    line-height: 1.5;
+  }
+  .lyrics-line {
+    padding-inline: 8px;
+  }
+  button.lyrics-line {
+    min-height: 48px;
+    padding-block: 10px;
+  }
+}
+/* Mobile first (390 px); nothing here may cause horizontal scroll. */
 .lyrics-editor {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
   color: var(--lyrics-fg, inherit);
   background: var(--lyrics-bg, transparent);
   font-size: max(12px, 1em);
+  container-type: inline-size; /* narrow-layout rules follow the editor's width, not the window's */
+}
+
+.lyrics-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
 .lyrics-editor button {
+  box-sizing: border-box;
   min-width: 44px;
   min-height: 44px;
   padding: 0 10px;
@@ -80,6 +112,7 @@ button.lyrics-line[aria-current] {
   border: 1px solid var(--lyrics-muted, #888);
   border-radius: var(--lyrics-radius, 6px);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .lyrics-editor button:disabled {
@@ -91,8 +124,126 @@ button.lyrics-line[aria-current] {
   .lyrics-editor button:not(:disabled):hover {
     border-color: var(--lyrics-accent, #2a7ae2);
   }
+  .lyrics-editor .lyrics-editor-line:hover {
+    background: rgb(128 128 128 / 0.12);
+  }
 }
 
+/* --- Step tabs: sticky, so "which step am I in" survives scrolling. A host with its own sticky header sets
+   --lyrics-sticky-top to that header's height. */
+.lyrics-editor-tabs {
+  position: sticky;
+  z-index: 1;
+  top: var(--lyrics-sticky-top, 0px);
+  display: flex;
+  background: var(--lyrics-bg, Canvas);
+  border-bottom: 1px solid var(--lyrics-muted, #888);
+}
+
+.lyrics-editor .lyrics-editor-tabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 0;
+  font-size: max(12px, 0.95em);
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-editor-tabs small {
+  display: block;
+  font-size: max(12px, 0.75em);
+  color: var(--lyrics-muted, #888);
+}
+
+.lyrics-editor-stepno {
+  display: inline-block;
+  min-width: 1.5em;
+  border: 1px solid currentColor;
+  border-radius: 1em;
+  font-size: max(12px, 0.85em);
+}
+
+.lyrics-editor .lyrics-editor-tabs [aria-selected='true'] {
+  font-weight: bold;
+  border-bottom-color: var(--lyrics-accent, #2a7ae2);
+}
+
+.lyrics-editor-tabs [aria-selected='true'] .lyrics-editor-stepno {
+  color: #fff;
+  background: var(--lyrics-accent, #2a7ae2);
+  border-color: var(--lyrics-accent, #2a7ae2);
+}
+
+/* --- Instructions and status */
+.lyrics-editor-banner {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 4px solid var(--lyrics-accent, #2a7ae2);
+  border-radius: var(--lyrics-radius, 6px);
+  background: rgb(128 128 128 / 0.12);
+  line-height: 1.4;
+}
+
+.lyrics-editor-undo {
+  display: flex;
+  gap: 4px;
+}
+
+.lyrics-editor .lyrics-editor-undo button {
+  padding: 0 8px;
+}
+
+.lyrics-editor-tip {
+  margin: 0;
+  font-size: max(14px, 0.9em);
+  line-height: 1.4;
+}
+
+.lyrics-editor-hint {
+  color: var(--lyrics-muted, #888);
+}
+
+/* Keyboard help is noise on touch-only devices. */
+@media (hover: none) {
+  .lyrics-editor-hint {
+    display: none;
+  }
+}
+
+/* --- Step 1: text */
+.lyrics-editor-text-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+  line-height: 1.5;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--lyrics-muted, #888);
+  border-radius: var(--lyrics-radius, 6px);
+  resize: vertical;
+}
+
+/* iOS zooms the page when a focused field's font is < 16px, and stays zoomed. */
+@media (pointer: coarse) {
+  .lyrics-editor-text-input {
+    font-size: max(16px, 1em);
+  }
+}
+
+.lyrics-editor .lyrics-editor-primary,
+.lyrics-editor .lyrics-editor-stamp {
+  min-height: 52px;
+  font-weight: bold;
+  color: #fff; /* not --lyrics-bg: that may be transparent */
+  background: var(--lyrics-accent, #2a7ae2);
+  border-color: var(--lyrics-accent, #2a7ae2);
+}
+
+/* --- Steps 2 and 3: line list */
 .lyrics-wave {
   display: flex;
   gap: 4px;
@@ -103,20 +254,20 @@ button.lyrics-line[aria-current] {
   display: block;
   flex: 1;
   min-width: 0;
-  height: 96px;
+  height: 92px;
   cursor: pointer;
 }
 
-.lyrics-editor-bar {
+.lyrics-wave-zoom {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 4px;
-  align-items: center;
 }
 
-.lyrics-editor-now,
-.lyrics-editor-time {
-  font-variant-numeric: tabular-nums;
+.lyrics-editor .lyrics-wave-zoom button {
+  padding: 0 6px;
+  font-size: max(12px, 0.8em);
+  white-space: nowrap;
 }
 
 .lyrics-editor-lines {
@@ -125,57 +276,242 @@ button.lyrics-line[aria-current] {
   padding: 0;
 }
 
+.lyrics-editor-gap {
+  height: 12px;
+}
+
 .lyrics-editor-row {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  padding: 2px;
+  border-bottom: 1px solid rgb(128 128 128 / 0.2); /* reads as a list of tappable rows */
   border-radius: var(--lyrics-radius, 6px);
+  /* clear of the sticky step tabs (~56px) and the sticky Stamp dock */
+  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 64px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
 .lyrics-editor-row[aria-current] {
   outline: 2px solid var(--lyrics-accent, #2a7ae2);
+  outline-offset: -2px;
+  background: rgb(128 128 128 / 0.12);
 }
 
-.lyrics-editor-row[data-late] .lyrics-editor-time {
-  text-decoration: line-through wavy;
+.lyrics-editor .lyrics-editor-line {
+  display: grid;
+  grid-template-columns: 2.5ch 9ch minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  text-align: start;
 }
 
-.lyrics-editor-row input {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0 8px;
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--lyrics-muted, #888);
-  border-radius: var(--lyrics-radius, 6px);
-  scroll-margin-bottom: 80px; /* stamp-and-advance scrolls the next row clear of the sticky Stamp button */
-}
-
-/* iOS zooms the page when a focused input's font is < 16px, and stays zoomed. */
-@media (pointer: coarse) {
-  .lyrics-editor-row input {
-    font-size: max(16px, 1em);
-  }
-}
-
-.lyrics-editor-hint {
-  margin: 0;
-  font-size: max(12px, 0.85em);
+.lyrics-editor-no {
+  text-align: end;
   color: var(--lyrics-muted, #888);
 }
 
-/* Big, thumb-reachable, stays on screen while the line list scrolls. */
-.lyrics-editor .lyrics-editor-stamp {
-  position: sticky;
-  bottom: 0;
-  min-height: 64px;
-  font-size: 1.25em;
+.lyrics-editor-time,
+.lyrics-editor-now {
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics-editor-time {
+  color: var(--lyrics-muted, #888);
+}
+
+.lyrics-editor-row[data-late] .lyrics-editor-time {
+  color: #c62828;
+  text-decoration: line-through wavy;
+}
+
+.lyrics-editor-text {
+  overflow-wrap: anywhere;
+}
+
+.lyrics-editor-row[aria-current] .lyrics-editor-text {
   font-weight: bold;
-  color: #fff; /* not --lyrics-bg: that may be transparent */
+}
+
+.lyrics-editor-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 0 6px;
+  font-size: max(12px, 0.75em);
+  font-weight: normal;
+  white-space: nowrap;
+  border-radius: 1em;
+  background: rgb(128 128 128 / 0.2);
+}
+
+/* Narrow (phone): the time goes under the lyric, so lyrics get the full width; step names fit one line. */
+@container (max-width: 480px) {
+  .lyrics-editor .lyrics-editor-tabs button {
+    font-size: max(12px, 0.85em);
+  }
+  .lyrics-editor .lyrics-editor-line {
+    grid-template-columns: 2.5ch minmax(0, 1fr);
+    gap: 0 8px;
+  }
+  .lyrics-editor-time {
+    grid-area: 2 / 2;
+    font-size: max(12px, 0.8em);
+  }
+  .lyrics-editor-text {
+    grid-area: 1 / 2;
+  }
+}
+
+/* Tools for the selected line sit right under it and wrap on narrow screens. */
+.lyrics-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.lyrics-editor .lyrics-editor-tools > button {
+  flex: 1 1 8em;
+}
+
+/* Text-style buttons: "Back to line N" and (destructive, rare, kept apart) "Clear". */
+.lyrics-editor .lyrics-editor-tools > .lyrics-editor-link {
+  flex: 0 0 auto;
+  border-color: transparent;
+  color: var(--lyrics-accent, #2a7ae2);
+  text-decoration: underline;
+}
+
+.lyrics-editor .lyrics-editor-tools > .lyrics-editor-quiet {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  border-color: transparent;
+  color: #c62828;
+  text-decoration: underline;
+}
+
+.lyrics-editor .lyrics-editor-tools > .lyrics-editor-nudge {
+  flex: 1 1 4em;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.lyrics-editor-tools > .lyrics-editor-tip {
+  flex-basis: 100%;
+}
+
+.lyrics-editor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.lyrics-editor .lyrics-editor-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-editor-chip small {
+  font-size: 12px;
+  color: var(--lyrics-muted, #888);
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics-editor .lyrics-editor-chip[data-timed] {
+  border-color: var(--lyrics-accent, #2a7ae2);
+}
+
+.lyrics-editor .lyrics-editor-chip[aria-current] {
+  color: #fff;
   background: var(--lyrics-accent, #2a7ae2);
   border-color: var(--lyrics-accent, #2a7ae2);
-  touch-action: manipulation;
+}
+
+.lyrics-editor-chip[aria-current] small {
+  color: inherit;
+}
+
+/* Big, thumb-reachable Stamp that stays on screen while the list scrolls. A host that pins its own
+   transport at the bottom sets --lyrics-sticky-bottom to that bar's height. */
+.lyrics-editor-dock {
+  position: sticky;
+  z-index: 1;
+  bottom: var(--lyrics-sticky-bottom, 0px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 4px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--lyrics-bg, Canvas);
+  border-top: 1px solid rgb(128 128 128 / 0.3);
+}
+
+.lyrics-editor-progress {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: max(14px, 0.9em);
+}
+
+.lyrics-editor .lyrics-editor-stamp,
+.lyrics-editor-dock .lyrics-editor-primary {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-editor .lyrics-editor-stamp {
+  min-height: 64px;
+  font-size: 1.2em;
+}
+
+/* Paused: Stamp steps back (outlined) so the eye goes to the host's Play first. */
+.lyrics-editor .lyrics-editor-stamp[data-paused] {
+  color: var(--lyrics-accent, #2a7ae2);
+  background: transparent;
+}
+
+/* This stamp would put the line out of order. */
+.lyrics-editor .lyrics-editor-stamp[data-warn] {
+  color: #8a4b00;
+  background: #fff4e0;
+  border: 2px solid #b26a00;
+}
+
+.lyrics-editor-warn {
+  color: #b26a00;
+}
+
+/* Every line synced: replaces the Stamp button until a line is tapped again. Its own row; the short
+   progress text and Undo share the row above. */
+.lyrics-editor-dock[data-done] .lyrics-editor-progress {
+  flex: 1 1 auto;
+}
+
+.lyrics-editor-done {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border: 2px solid #2e7d32;
+  border-radius: var(--lyrics-radius, 6px);
+  background: rgb(46 125 50 / 0.1);
+}
+
+.lyrics-editor-done p {
+  flex-basis: 100%;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.lyrics-editor-done b {
+  color: #2e7d32;
+}
+
+.lyrics-editor .lyrics-editor-done button {
+  flex: 1 1 10em;
 }

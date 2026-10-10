@@ -11,6 +11,12 @@ export interface LrcDoc {
 }
 export declare function formatTime(ms: number): string;
 export declare function displayText(text: string): string;
+export interface LrcWord {
+    timeMs: number | null;
+    text: string;
+}
+export declare function lineWords(text: string): LrcWord[];
+export declare function joinWords(words: LrcWord[]): string;
 export declare function setLineTime(line: LrcLine, timeMs: number | null): LrcLine;
 export declare function parseLrc(input: string): LrcDoc;
 export declare function serializeLrc(doc: LrcDoc): string;

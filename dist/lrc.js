@@ -14,6 +14,27 @@ function formatTime(ms) {
 function displayText(text) {
   return text.replace(WORD_TAG, "").trim();
 }
+const TOKEN = new RegExp(`<${TIME}>|\\s+|[^\\s<]+|<`, "g");
+function lineWords(text) {
+  const out = [];
+  let tag = null;
+  for (const [tok, m, s, f] of text.matchAll(TOKEN)) {
+    const last = out[out.length - 1];
+    if (m !== void 0) tag = toMs(m, s, f);
+    else if (/^\s/.test(tok)) {
+      if (last) last.text += tok;
+    } else if (tag === null && last && !/\s$/.test(last.text)) last.text += tok;
+    else {
+      out.push({ timeMs: tag, text: tok });
+      tag = null;
+    }
+  }
+  if (tag !== null) out.push({ timeMs: tag, text: "" });
+  return out;
+}
+function joinWords(words) {
+  return words.map((w) => (w.timeMs === null ? "" : `<${formatTime(w.timeMs)}>`) + w.text).join("");
+}
 function setLineTime(line, timeMs) {
   if (line.timeMs === null || timeMs === null) return { ...line, timeMs };
   const delta = timeMs - line.timeMs;
@@ -43,7 +64,8 @@ function parseLrc(input) {
     }
     const tags = LEADING_TAGS.exec(line);
     if (!tags) {
-      if (line) push({ timeMs: null, text: line });
+      const prev = (blocks.length ? blocks[blocks.length - 1] : head).at(-1);
+      if (line || (prev == null ? void 0 : prev.text)) push({ timeMs: null, text: line });
       continue;
     }
     const first = { timeMs: null, text: line.slice(tags[0].length).trim() };
@@ -67,6 +89,8 @@ function serializeLrc(doc) {
 export {
   displayText,
   formatTime,
+  joinWords,
+  lineWords,
   parseLrc,
   serializeLrc,
   setLineTime

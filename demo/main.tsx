@@ -1,13 +1,17 @@
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LyricsEditor, LyricsView, peaksFromAudio, type Peaks, type Position } from '../src/index';
+import { LyricsEditor, LyricsView, displayText, formatTime, parseLrc, peaksFromAudio, type Peaks, type Position } from '../src/index';
 // Like a host importing '@experintellia/lyrics/style.css' (src/index.ts has no CSS imports).
 import '../src/view.css';
 import '../src/editor.css';
 import { decodeText } from './decodeText';
 import './demo.css';
 
+declare const __COMMIT__: { hash: string; subject: string };
+
 const OFFSET_KEY = 'lyrics-demo-offset';
+const isPlain = (lrc: string) => parseLrc(lrc).lines.every((l) => l.timeMs === null);
+const clock = (ms: number) => formatTime(ms).slice(0, 5); // mm:ss
 
 function App() {
   const audio = useRef<HTMLAudioElement>(null);
@@ -16,10 +20,14 @@ function App() {
   const [peaks, setPeaks] = useState<Peaks>();
   const [position, setPosition] = useState<Position>({ timeMs: 0, playing: false, durationMs: 0 });
   const [lrc, setLrc] = useState('');
+  const [lyricsName, setLyricsName] = useState(''); // loaded lyrics file, '' = typed
   const [saved, setSaved] = useState(''); // what's on disk (loaded or downloaded); differs = unsaved edits
-  const [edit, setEdit] = useState(false);
+  const [loads, setLoads] = useState(0); // lyrics files loaded; part of the editor key
+  const [tab, setTab] = useState<'preview' | 'edit'>('edit'); // no lyrics yet: edit
   const [offsetMs, setOffsetMs] = useState(() => Number(localStorage.getItem(OFFSET_KEY)) || 0);
   const dirty = lrc !== saved;
+  const lines = useMemo(() => parseLrc(lrc).lines.filter((l) => displayText(l.text)), [lrc]);
+  const stamped = lines.filter((l) => l.timeMs !== null).length;
 
   // New audio: fresh object URL and peaks in the background. No peaks = plain ruler.
   useEffect(() => {
@@ -55,11 +63,32 @@ function App() {
   const onSeek = (ms: number) => {
     if (audio.current) audio.current.currentTime = ms / 1000;
   };
+  const toggle = () => {
+    const a = audio.current!;
+    if (a.paused) a.play().catch((e) => console.warn(e));
+    else a.pause();
+  };
+  // Space = play/pause, except where Space already means something (typing, a focused button or control).
+  // Editor rows count as "not a control": after tapping a row to fix it, Space must still start playback.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || e.repeat || !audio.current?.src) return;
+      const controls = 'input, textarea, select, button:not(.lyrics-editor-line), summary, a, [contenteditable]';
+      if (e.target instanceof Element && e.target.closest(controls)) return;
+      e.preventDefault();
+      toggle();
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
 
   const loadLyrics = async (f: File) => {
     const text = decodeText(await f.arrayBuffer());
     setLrc(text);
     setSaved(text);
+    setLyricsName(f.name);
+    setLoads((n) => n + 1);
+    setTab(isPlain(text) ? 'edit' : 'preview'); // plain text needs syncing first
   };
 
   const download = () => {
@@ -72,49 +101,133 @@ function App() {
   };
 
   const props = { lrc, position, onSeek, peaks, offsetMs };
+  // Typing lyrics doesn't end the empty state: collapsing the header on the textarea's blur would move Next
+  // out from under the finger between pointerdown and click.
+  const fresh = !file && !loads;
+  const lyricsInfo = lyricsName
+    ? `${lyricsName} · ${lines.length} lines`
+    : lines.length
+      ? `${lines.length} typed line${lines.length === 1 ? '' : 's'}`
+      : fresh
+        ? '(optional)'
+        : 'none yet';
   return (
     <>
-      <header className="demo-bar">
-        <label>
-          Audio <input type="file" accept="audio/*" onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} />
-        </label>
-        <label>
-          Lyrics <input type="file" accept=".lrc,.txt,text/plain" onChange={(e) => e.target.files?.[0] && loadLyrics(e.target.files[0])} />
-        </label>
-        <label>
-          <input type="checkbox" checked={edit} onChange={(e) => setEdit(e.target.checked)} /> Edit
-        </label>
-        <label>
-          Offset (ms){' '}
-          <input
-            type="number"
-            step={10}
-            value={offsetMs}
-            onChange={(e) => {
-              const v = Number(e.target.value) || 0;
-              setOffsetMs(v);
-              localStorage.setItem(OFFSET_KEY, String(v));
-            }}
-          />
-        </label>
-        <button type="button" disabled={!lrc} onClick={download}>
-          Download .lrc{dirty ? ' *' : ''}
-        </button>
+      {/* Empty state: a short how-to. Once something is loaded it shrinks to one compact row. */}
+      <header className="demo-files" data-fresh={fresh || undefined}>
+        {fresh && <h1>Sync lyrics to a song</h1>}
+        <div className="demo-file">
+          <label>
+            <span className="demo-file-kind">Audio</span> <span className="demo-file-name">{file ? `♪ ${file.name}` : ''}</span>
+            <span className="demo-pick">{file ? 'Change' : 'Choose audio file…'}</span>
+            <input type="file" className="demo-sr" aria-label="Audio file" accept="audio/*"
+              onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} />
+          </label>
+          {fresh && <small>An audio file you own. It stays on this device.</small>}
+        </div>
+        <div className="demo-file">
+          <label>
+            <span className="demo-file-kind">Lyrics</span> <span className="demo-file-name">{lyricsInfo}</span>
+            <span className="demo-pick">{fresh ? 'Load .lrc or .txt…' : 'Load file…'}</span>
+            <input type="file" className="demo-sr" aria-label="Lyrics file" accept=".lrc,.txt,text/plain"
+              onChange={(e) => e.target.files?.[0] && loadLyrics(e.target.files[0])} />
+          </label>
+          {fresh && <small>Or type or paste them in the editor below.</small>}
+        </div>
       </header>
-      <audio ref={audio} controls src={url || undefined} onTimeUpdate={sync} onPlay={sync} onPause={sync}
-        onSeeked={sync} onDurationChange={sync} />
-      <main className="demo-main">
-        {/* key: remount on new audio resets undo, scroll and timing state, like a host's key={trackId}. */}
-        {edit ? (
-          <LyricsEditor key={url} {...props} onChange={setLrc} />
-        ) : lrc.trim() ? (
-          <div className="demo-view">
-            <LyricsView key={url} {...props} />
+
+      <nav className="demo-tabs">
+        <div role="tablist" aria-label="Mode">
+          {(['preview', 'edit'] as const).map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+              {t === 'preview' ? 'Preview' : 'Edit'}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="demo-download"
+          data-primary={(lines.length > 0 && stamped === lines.length) || undefined}
+          disabled={!stamped}
+          title={stamped ? undefined : 'Sync at least one line first'}
+          onClick={download}
+        >
+          Download .lrc
+          {dirty && stamped > 0 && <small>unsaved changes</small>}
+        </button>
+        {/* ponytail: offset is a rare per-device setting, so it hides behind a disclosure. */}
+        <details className="demo-more">
+          <summary aria-label="Settings" title="Settings">
+            ⚙<span className="demo-wide"> Settings</span>
+          </summary>
+          <div className="demo-more-panel">
+            <label>
+              Audio delay (ms){' '}
+              <input
+                type="number"
+                step={10}
+                value={offsetMs}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  setOffsetMs(v);
+                  localStorage.setItem(OFFSET_KEY, String(v));
+                }}
+              />
+            </label>
+            <small>Positive if the lyrics run ahead of what you hear (e.g. Bluetooth headphones).</small>
+            {__COMMIT__.hash && (
+              <small>
+                Version{' '}
+                <a href={`https://github.com/experintellia/lyrics-component/commit/${__COMMIT__.hash}`}>
+                  {__COMMIT__.hash.slice(0, 7)}
+                </a>
+              </small>
+            )}
           </div>
+        </details>
+      </nav>
+
+      <main className="demo-main">
+        {/* key: remount on new audio or a loaded lyrics file resets undo, scroll and step, like a host's key={trackId}. */}
+        {tab === 'edit' ? (
+          <LyricsEditor key={`${url}|${loads}`} {...props} onChange={setLrc} />
+        ) : lrc.trim() ? (
+          <>
+            {isPlain(lrc) && (
+              <div className="demo-cta">
+                <p>
+                  <b>These lyrics aren't synced yet.</b> Sync them to the music to get line-by-line highlighting
+                  (word-by-word is optional). It takes one play-through: tap Stamp as each line starts.
+                </p>
+                <button type="button" onClick={() => setTab('edit')}>Start syncing →</button>
+              </div>
+            )}
+            {!isPlain(lrc) && (
+              <p className="demo-hint">Tap a line to jump there. Wrong time? Open Edit and tap that line.</p>
+            )}
+            <div className="demo-view">
+              <LyricsView key={url} {...props} />
+            </div>
+          </>
         ) : (
-          <p className="demo-empty">Load lyrics, or switch to Edit to type or paste them.</p>
+          <p className="demo-empty">No lyrics yet. Load a lyrics file, or type them in Edit.</p>
         )}
       </main>
+      {/* The host's transport, pinned to the bottom; the editor's sticky Stamp bar sits right above it
+          (--lyrics-sticky-bottom). Our own controls: native ones look disabled and hide Play on phones. */}
+      <div className="demo-transport" hidden={!url}>
+        <audio ref={audio} src={url || undefined} onTimeUpdate={sync} onPlay={sync} onPause={sync}
+          onSeeked={sync} onDurationChange={sync} />
+        {/* Paused: Play is the primary button (the editor's Stamp steps back), so it's pressed first. */}
+        <button type="button" className="demo-play" onClick={toggle} aria-keyshortcuts="Space" title="Play/pause (Space)"
+          data-primary={!position.playing || undefined}>
+          {position.playing ? '❚❚ Pause' : '▶ Play'}
+          <kbd className="demo-key" aria-hidden="true">Space</kbd>
+        </button>
+        <input type="range" aria-label="Seek" min={0} max={position.durationMs} step={100} value={position.timeMs}
+          onChange={(e) => onSeek(+e.target.value)} />
+        <span className="demo-time">{clock(position.timeMs)} / {clock(position.durationMs)}</span>
+      </div>
     </>
   );
 }
