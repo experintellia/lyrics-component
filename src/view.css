@@ -61,3 +61,24 @@ button.lyrics-line[aria-current] {
     background: rgb(128 128 128 / 0.15);
   }
 }
+
+/* word/phrase-synced current line: sung words keep the accent, upcoming ones stay muted */
+button.lyrics-line[aria-current] .lyrics-upcoming {
+  color: var(--lyrics-muted, #767676);
+}
+
+/* phones: larger text and more air between tap targets */
+@media (max-width: 480px) {
+  .lyrics-view {
+    padding: 4px;
+    font-size: max(18px, 1em);
+    line-height: 1.5;
+  }
+  .lyrics-line {
+    padding-inline: 8px;
+  }
+  button.lyrics-line {
+    min-height: 48px;
+    padding-block: 10px;
+  }
+}

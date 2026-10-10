@@ -78,6 +78,51 @@ describe('LyricsView', () => {
     expect(current()).toEqual(['Hel lo']);
   });
 
+  // [sung, upcoming] text of each current line; a line-mode current line has no upcoming span.
+  const words = () =>
+    [...container.querySelectorAll('[aria-current]')].map((e) => {
+      const up = e.querySelector('.lyrics-upcoming')?.textContent ?? null;
+      return [e.textContent!.slice(0, e.textContent!.length - (up?.length ?? 0)), up];
+    });
+
+  it('word mode: sung words accented, upcoming muted, syllables split', async () => {
+    const lrc = '[00:01.00]<00:01.00>Hel<00:01.50>lo <00:02.00>world\n[00:03.00]Next\n';
+    await render(lrc, 1_200);
+    expect(words()).toEqual([['Hel', 'lo world']]);
+    await render(lrc, 1_500);
+    expect(words()).toEqual([['Hello ', 'world']]);
+    await render(lrc, 2_900);
+    expect(words()).toEqual([['Hello world', '']]);
+    await render(lrc, 3_000);
+    expect(words()).toEqual([['Next', null]]); // line without word tags: whole line, as before
+  });
+
+  it('phrase timing: untimed words go with the timed word before them', async () => {
+    const lrc = '[00:01.00]Oh <00:01.50>take me <00:02.50>home tonight\n';
+    await render(lrc, 1_000); // leading untimed words go with the line
+    expect(words()).toEqual([['Oh ', 'take me home tonight']]);
+    await render(lrc, 1_600);
+    expect(words()).toEqual([['Oh take me ', 'home tonight']]);
+    await render(lrc, 2_500);
+    expect(words()).toEqual([['Oh take me home tonight', '']]);
+  });
+
+  it('trailing end tag: last word stays sung until and after the end', async () => {
+    const lrc = '[00:01.00]<00:01.00>Bye <00:01.50>now<00:02.00>\n[00:05.00]Later\n';
+    await render(lrc, 1_700);
+    expect(words()).toEqual([['Bye now', '']]);
+    await render(lrc, 2_500);
+    expect(words()).toEqual([['Bye now', '']]);
+  });
+
+  it('non-current lines show no word highlight', async () => {
+    const lrc = '[00:01.00]<00:01.00>A <00:01.50>b\n[00:02.00]<00:02.00>C <00:02.50>d\n';
+    await render(lrc, 2_200);
+    expect(words()).toEqual([['C ', 'd']]);
+    expect(container.querySelectorAll('.lyrics-upcoming')).toHaveLength(1);
+    expect(container.querySelector('button:not([aria-current])')!.innerHTML).toBe('A b');
+  });
+
   it('clicking a line seeks to lineTime + offsetMs and highlights it immediately', async () => {
     await render(LRC, 1_200, 150);
     await act(() => container.querySelectorAll('button')[2].click());
