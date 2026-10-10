@@ -1,1 +1,85 @@
-export {};
+// LRC parse/serialize. No React, no DOM.
+
+export interface LrcLine { timeMs: number | null; text: string } // text keeps raw <mm:ss.xx> word tags
+export interface LrcDoc { meta: { key: string; value: string }[]; lines: LrcLine[] }
+
+// [mm:ss], [mm:ss.x], [mm:ss.xx], [mm:ss.xxx], [mm:ss:xx]; minutes unbounded.
+const TIME = String.raw`(\d+):(\d{1,2})(?:[.:](\d{1,3}))?`;
+const LEADING_TAGS = new RegExp(String.raw`^(?:\[${TIME}\])+`);
+const TAG = new RegExp(String.raw`\[${TIME}\]`, 'g');
+const WORD_TAG = new RegExp(`<${TIME}>`, 'g');
+const META = /^\[([a-z#]+):(.*)\]$/;
+
+// Fraction by digit count: .5 = .50 = .500 = 500 ms.
+const toMs = (m: string, s: string, f = '') => +m * 60000 + +s * 1000 + +f.padEnd(3, '0');
+
+export function formatTime(ms: number): string {
+  ms = Math.max(0, Math.round(ms));
+  const m = String(Math.floor(ms / 60000)).padStart(2, '0');
+  const s = String(Math.floor(ms / 1000) % 60).padStart(2, '0');
+  const frac = ms % 1000;
+  return `${m}:${s}.${frac % 10 ? String(frac).padStart(3, '0') : String(frac / 10).padStart(2, '0')}`;
+}
+
+export function displayText(text: string): string {
+  return text.replace(WORD_TAG, '').trim();
+}
+
+export function setLineTime(line: LrcLine, timeMs: number | null): LrcLine {
+  if (line.timeMs === null || timeMs === null) return { ...line, timeMs };
+  const delta = timeMs - line.timeMs;
+  if (!delta) return line;
+  const text = line.text.replace(WORD_TAG, (_, m, s, f) => `<${formatTime(toMs(m, s, f) + delta)}>`);
+  return { timeMs, text };
+}
+
+export function parseLrc(input: string): LrcDoc {
+  const raw = input.replace(/\s+$/, '').split(/\r?\n/);
+  const isLrc = raw.some((l) => LEADING_TAGS.test(l.trim()));
+  const meta: LrcDoc['meta'] = [];
+  let offset = 0;
+  // Blocks: a stamped line plus the unstamped lines after it. Head block = unstamped lines before any stamp.
+  const head: LrcLine[] = [];
+  const blocks: LrcLine[][] = [];
+  const push = (l: LrcLine) => (blocks.length ? blocks[blocks.length - 1] : head).push(l);
+
+  for (const rawLine of raw) {
+    const line = rawLine.trim();
+    const m = META.exec(line);
+    if (m) {
+      if (m[1] === 'offset') offset = Number(m[2].trim()) || 0;
+      else meta.push({ key: m[1], value: m[2].trim() });
+      continue;
+    }
+    if (!isLrc) {
+      // ponytail: plain text keeps blank lines (stanza breaks); LRC drops them.
+      if (line || head.length) head.push({ timeMs: null, text: rawLine.trimEnd() });
+      continue;
+    }
+    const tags = LEADING_TAGS.exec(line);
+    if (!tags) {
+      if (line) push({ timeMs: null, text: line });
+      continue;
+    }
+    // Several tags → one line per tag (word tags are relative to the first). Empty text = instrumental gap.
+    const first: LrcLine = { timeMs: null, text: line.slice(tags[0].length).trim() };
+    for (const [, mm, ss, ff] of tags[0].matchAll(TAG)) {
+      first.timeMs ??= toMs(mm, ss, ff);
+      blocks.push([setLineTime(first, toMs(mm, ss, ff))]);
+    }
+  }
+
+  blocks.sort((a, b) => a[0].timeMs! - b[0].timeMs!); // stable: equal times keep file order
+  let lines = head.concat(...blocks);
+  // [offset:N]: positive N = lyrics earlier. Baked in, clamped ≥ 0, tag dropped.
+  if (offset) lines = lines.map((l) => (l.timeMs === null ? l : setLineTime(l, Math.max(0, l.timeMs - offset))));
+  return { meta, lines };
+}
+
+export function serializeLrc(doc: LrcDoc): string {
+  const out = [
+    ...doc.meta.map(({ key, value }) => `[${key}:${value}]`),
+    ...doc.lines.map((l) => (l.timeMs === null ? l.text : `[${formatTime(l.timeMs)}]${l.text}`)),
+  ];
+  return out.length ? out.join('\n') + '\n' : '';
+}
