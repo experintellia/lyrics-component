@@ -1,0 +1,63 @@
+/* Host maps --lyrics-* on any ancestor; defaults live in the var() fallbacks so they don't shadow it. */
+.lyrics-view {
+  position: relative; /* offsetParent for the auto-scroll math */
+  box-sizing: border-box;
+  height: 100%; /* the host sizes the box; it is the scroll container */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  padding: 8px;
+  background: var(--lyrics-bg, transparent);
+  color: var(--lyrics-fg, inherit);
+  font-size: max(12px, 1em);
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-view {
+    scroll-behavior: auto;
+  }
+}
+
+.lyrics-line {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 4px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.lyrics-line:empty {
+  min-height: 1.4em; /* stanza break in plain text (one line-height) */
+}
+
+/* unstamped labels like [Chorus] inside synced lyrics shouldn't look highlighted */
+.lyrics-view:has(button.lyrics-line) div.lyrics-line,
+button.lyrics-line {
+  color: var(--lyrics-muted, #767676);
+}
+
+button.lyrics-line {
+  min-height: 44px;
+  padding-block: 8px;
+  border-radius: var(--lyrics-radius, 8px);
+  cursor: pointer;
+}
+
+button.lyrics-line[aria-current] {
+  color: var(--lyrics-accent, currentColor);
+  font-weight: bold;
+}
+
+@media (hover: hover) {
+  button.lyrics-line:hover {
+    background: rgb(128 128 128 / 0.15);
+  }
+}
