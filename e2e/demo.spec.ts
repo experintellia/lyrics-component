@@ -305,7 +305,7 @@ test('word step: a timed word chip seeks to its stamp; Loop line jumps back to t
   await page.locator('.demo-play').click();
 });
 
-test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, Space; Tab then Enter presses; select and textarea keep keys', async ({ page }) => {
+test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, Space; Tab then Enter presses; select and textarea keep keys', async ({ page, browserName }) => {
   await page.goto('/');
   await loadAudio(page);
   await loadLyrics(page, 'l.txt', Array.from({ length: 8 }, (_, i) => `Line ${i + 1}`).join('\n'));
@@ -358,7 +358,8 @@ test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, 
   await page.getByRole('button', { name: '+0.1 s' }).click();
   await expect(time).not.toHaveText(before!);
   await row.focus();
-  await page.keyboard.press('Tab');
+  // macOS WebKit (like Safari) only Tabs to buttons with Option held; Linux WebKit takes Alt+Tab as Tab.
+  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   await expect(page.getByRole('button', { name: '−0.1 s' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(time).toHaveText(before!);
