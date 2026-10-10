@@ -134,3 +134,33 @@ The demo pins its `<audio>` controls and the Stamp button at the bottom on small
 - CI on macOS: on pushes to main, `v*` tags and workflow_dispatch, run the Playwright WebKit project on
   macos-latest, plus a real **Safari** smoke test via `safaridriver` driven over raw W3C WebDriver HTTP
   with `fetch` (no new deps).
+
+## v2.1: precise syncing (requested 2026-10-10)
+
+- **Drag to seek in the waveform ("tape scrub").** The view stays centred on the playhead. Dragging moves
+  the waveform under it, so dragging left goes forward in time, like a mobile audio editor. While dragging,
+  the display follows the finger. `onSeek` fires once, on release (host seeks are slow), and the clock's
+  seek hold covers the gap. A tap without movement still seeks to the tapped spot. Use pointer events with
+  pointer capture. `touch-action: pan-y` keeps vertical page scrolling on touch. The aria-label and title
+  explain both gestures.
+- **Slow down.** `Position.rate?: number` (default 1) is the only contract change, and it is additive. The
+  host owns playback and therefore the speed control, the same way it owns Play.
+  - Clock: interpolate at `rate` (`t = lastTick + (now − arrival) × rate`). The cap is still 500 ms of
+    wall time.
+  - Offset: `offsetMs` is latency in wall time, so `audible = position − offsetMs × rate` and
+    `seek → onSeek(t + offsetMs × rate)`.
+  - Demo: a speed control in the bottom play bar (1×, 0.75×, 0.5×) sets `audio.playbackRate` (pitch is
+    preserved by default) and reports `rate`. The sync step's instruction mentions slowing down for
+    precision.
+- **Pasting synced lyrics into the Lyrics step works like importing.** If the pasted text is LRC (a line
+  starts with a time tag), parse it with `parseLrc` and splice the parsed lines in at the selection,
+  keeping their stamps and word tags. Merge its metadata; `[offset]` is baked in by the parser. There is
+  no dialog: pasting into an empty box (or over everything selected) is a full import. Show an inline
+  notice ("Kept the timing of 12 pasted lines") and make it one undo step. Plain-text pastes behave as
+  before.
+- **Coloured sections in the waveform.** A section starts at the first line, after a blank line, or at an
+  unstamped label line such as `[Chorus]`. It runs from the first stamp in the section to the first
+  stamp of the next one (or the end). Draw translucent background bands in a few alternating hues that
+  work in light and dark, with the label text (if any) at the top of the band. Also tint the selected
+  line's span (its stamp up to the next stamp) with the accent colour, so it's clear which part of the
+  song a line covers.
