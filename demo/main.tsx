@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LyricsEditor, LyricsView, displayText, formatTime, parseLrc, peaksFromAudio, type Peaks, type Position } from '../src/index';
+import { LyricsEditor, LyricsView, displayText, formatTime, isShortcut, parseLrc, peaksFromAudio, type Peaks, type Position } from '../src/index';
 // Like a host importing '@experintellia/lyrics/style.css' (src/index.ts has no CSS imports).
 import '../src/view.css';
 import '../src/editor.css';
@@ -68,18 +68,16 @@ function App() {
     if (a.paused) a.play().catch((e) => console.warn(e));
     else a.pause();
   };
-  // Space = play/pause, except where Space already means something (typing, a focused button or control).
-  // Editor rows count as "not a control": after tapping a row to fix it, Space must still start playback.
+  // Space = play/pause, by the editor's shortcut rule: anywhere except while typing; a keyboard-focused
+  // (:focus-visible) button keeps Space. Capture phase, so a clicked button or slider can't take it first.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key !== ' ' || e.repeat || !audio.current?.src) return;
-      const controls = 'input, textarea, select, button:not(.lyrics-editor-line), summary, a, [contenteditable]';
-      if (e.target instanceof Element && e.target.closest(controls)) return;
+      if (e.key !== ' ' || !audio.current?.src || !isShortcut(e)) return;
       e.preventDefault();
-      toggle();
+      if (!e.repeat) toggle();
     };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    window.addEventListener('keydown', h, true);
+    return () => window.removeEventListener('keydown', h, true);
   }, []);
 
   const loadLyrics = async (f: File) => {
@@ -110,7 +108,7 @@ function App() {
   return (
     <>
       {/* Empty state: a short how-to. Once something is loaded it shrinks to one compact row. */}
-      <header className="demo-files" data-fresh={fresh || undefined}>
+      <header className="demo-files" data-fresh={fresh || undefined} data-preview={tab === 'preview' || undefined}>
         {fresh && <h1>Sync lyrics to a song</h1>}
         <div className="demo-file">
           <label>

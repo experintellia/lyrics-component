@@ -35,8 +35,16 @@ import { parseLrc, serializeLrc, lineWords, joinWords } from '@experintellia/lyr
 - **Plain text** (no time tags): scrollable text, nothing highlighted.
 - **Line-synced** (`[mm:ss.xx]Line`): the current line is highlighted and kept in view; tapping a line seeks.
 - **Word/phrase-synced** (enhanced LRC, `[00:12.00]<00:12.00>Carry <00:12.40>me <00:12.70>home`):
-  inside the current line, words already sung take the accent colour and the rest stay muted. An
-  untimed word goes with the timed word before it, so tagging only some words gives phrase timing.
+  karaoke inside the current line. Words already sung take the accent colour, upcoming words stay
+  muted, and the word being sung fills with the accent from its start edge (right to left in RTL
+  text) over its duration: up to the next word's stamp, the trailing end tag (`…home <00:13.50>`),
+  the next line's stamp, or for the song's last word `durationMs`. An untimed word goes with the
+  timed word before it, so tagging only some words gives phrase timing.
+
+The current line is larger than the others (in both modes; more so in a box 600 px or wider, where all
+lyrics get 1.75× the font size) and the word being sung scales up a little from its start and eases back.
+Sung lines fade more than upcoming ones. Under `prefers-reduced-motion: reduce` nothing scales or animates; the fill
+still shows progress.
 
 A blank line shows as a stanza gap in every mode (in LRC, one blank line after a lyric line is kept).
 
@@ -50,16 +58,41 @@ A blank line shows as a stanza gap in every mode (in LRC, one blank line after a
    notice says "Kept the timing of N pasted lines". One undo step. Plain-text pastes are untouched.
 2. **Sync lines**: press play (host transport), then tap **Stamp** as each highlighted line starts.
    The Stamp button names its target ("Stamp line 3", or "Re-stamp line 3" for a line that has a
-   time). Tapping a timed line selects it, rewinds (via `onSeek`) to just before it, and shows nudge
-   (±0.1 s), "play from here", "back to the first unsynced line" and clear tools. While the host is
+   time). Tapping a timed line selects it, seeks (via `onSeek`) to its exact stamp, like "▶ Play from
+   here", and shows nudge (±0.1 s), "play from here", "back to the first unsynced line" and clear tools.
+   A stamp that is too late is fixed by dragging the waveform back or nudging −0.1 s. While the host is
    paused, Stamp is drawn outlined so the host's Play stands out; a stamp that would land out of order
    is flagged (allowed, with a warning). Stamping the last untimed line replaces Stamp with a "done"
    card (back to the start, or on to word timing) until a line is tapped again.
-   Keys: S or Enter stamps, ↑/↓ select, Ctrl/⌘+Z undoes. Opens here when `lrc` has lines, so plain
-   text goes straight to syncing.
+   Opens here when `lrc` has lines, so plain text goes straight to syncing.
 3. **Sync words** (optional): tap a line, then Stamp each word as it starts; after the last word the
-   next line comes up ("Next line →" skips). Tap a word chip to re-time from there. Every line shows
-   its progress ("0/7 words", "3/7 words", "words ✓").
+   next line comes up ("Next line →" skips). Every line shows its progress ("0/7 words", "3/7 words",
+   "words ✓"). Tapping a timed word chip selects it and seeks to its stamp (Stamp then re-times it); the play
+   button names its target: "▶ Play from “home”" for a timed selected word, else "▶ Play line", and ±0.1 s nudges the selected
+   word (nudging the first word also moves the line time). Here the waveform fits the selected line
+   (its stamp to the next, plus 0.5 s each side; the zoom buttons only widen it) and shows the words:
+   a marker per timed word with an outlined label chip (shortened with "…" or left out when its span is
+   too narrow), the untimed words after it as faint text, alternate word spans lightly shaded, the next
+   word outlined (or, untimed, flagged at the playhead). **↻ Loop line** (on by default, word step only)
+   seeks back to the line start whenever playback passes the line's end; while on, the waveform brackets
+   the line and dims the rest, and the status reads "↻ Line 5: …".
+
+**Keyboard shortcuts:** S or Enter stamps, ↑/↓ choose a line (a word in step 3), Ctrl/⌘+Z undoes,
+Ctrl/⌘+Y or Shift+Ctrl/⌘+Z redoes. The rule is "shortcuts work anywhere except while typing": they
+are ignored only in a text entry (textarea, text or number input, contenteditable) and in a `<select>`,
+whose letters, arrows, Space and Enter all pick an option. A button or slider that was clicked or
+tapped doesn't swallow them (they are handled in the capture phase and `preventDefault`ed). Only on a
+control reached with the keyboard (`:focus-visible`, e.g. via Tab) do Enter and Space keep their usual
+meaning and press it. The same rule is exported as `isShortcut(event)` for the host's own keys; the
+demo uses it for Space = play/pause:
+
+```ts
+window.addEventListener('keydown', (e) => {
+  if (e.key !== ' ' || !isShortcut(e)) return;
+  e.preventDefault();
+  if (!e.repeat) togglePlay();
+}, true); // capture phase, like the editor
+```
 
 Editing a line's text in step 1 keeps the stamps of unchanged lines. Undo/redo covers every step.
 The sticky bottom bar holds Undo/Redo, Stamp and a status line (playhead, "paused" while the host is
@@ -69,7 +102,7 @@ clear where you are. The step tabs are sticky too: if your page has its own stic
 owns transport): put yours right under it. On phones, set `--lyrics-sticky-bottom` to the height of
 any transport bar you pin at the bottom so the Stamp bar sits above it.
 
-The waveform stays centred on the playhead and marks each stamp with its line number. Tap it to jump
+In the line steps the waveform stays centred on the playhead and marks each stamp with its line number. Tap it to jump
 to that spot, or drag it sideways to scrub like tape (drag left = forward); `onSeek` fires once, on
 release. Vertical swipes still scroll the page. Sections are drawn as alternating coloured bands: a
 section starts at the first line, after a blank line, or at an unstamped label line such as `[Chorus]`
@@ -123,6 +156,11 @@ Plain CSS. Set any of these on an ancestor:
 | `--lyrics-sticky-top` | editor's sticky step tabs offset from the viewport top | `0px` |
 
 Fonts are inherited. Auto-scroll is not smooth under `prefers-reduced-motion: reduce`.
+
+In a word-synced current line, words are wrapped in `.lyrics-sung`, `.lyrics-active` and
+`.lyrics-upcoming` spans (other lines are plain text). The active word's progress is the
+`--lyrics-fill` percentage, written on that span every frame by the component; it's an output to
+style against, not a setting.
 
 ## Development
 

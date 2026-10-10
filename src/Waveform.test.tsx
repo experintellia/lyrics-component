@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { parseLrc } from './lrc';
-import { lineSpan, sections, Waveform } from './Waveform';
+import { lineSpan, sections, viewWindow, Waveform, wordMarks } from './Waveform';
 
 const lines = (lrc: string) => parseLrc(lrc).lines;
 
@@ -34,6 +34,27 @@ describe('lineSpan', () => {
     expect(lineSpan(l, 1, 9000)).toBeNull();
     expect(lineSpan(l, 2, 9000)).toEqual([3000, 9000]);
     expect(lineSpan(l, 7)).toBeNull();
+  });
+});
+
+describe('viewWindow', () => {
+  it('centres on the playhead, or fits a line span plus 0.5 s each side (widen zooms out)', () => {
+    expect(viewWindow(20_000, 10_000)).toEqual([15_000, 10_000]);
+    expect(viewWindow(2_000, 10_000)).toEqual([0, 10_000]);
+    expect(viewWindow(99_000, 10_000, [10_000, 13_000])).toEqual([9_500, 4_000]); // playhead doesn't move it
+    expect(viewWindow(0, 10_000, [10_000, 13_000], 2)).toEqual([7_500, 8_000]);
+    expect(viewWindow(0, 10_000, [10_000, Infinity])).toEqual([9_500, 16_000]); // unknown end: capped at 15 s
+  });
+});
+
+describe('wordMarks', () => {
+  it('one mark per timed word, up to the next stamp, end tag or line end; flags the next word', () => {
+    expect(wordMarks('<00:01.00>a b <00:02.00>c <00:02.50>', 4_000, 2)).toEqual([
+      { startMs: 1000, endMs: 2000, text: 'a', rest: 'b', next: false }, // untimed "b" shares the span of "a"
+      { startMs: 2000, endMs: 2500, text: 'c', rest: '', next: true },
+    ]);
+    expect(wordMarks('<00:01.00>a <00:03.00>b', 5_000, 0).map((m) => [m.endMs, m.next])).toEqual([[3000, true], [5000, false]]);
+    expect(wordMarks('plain words', 5_000, 0)).toEqual([]);
   });
 });
 

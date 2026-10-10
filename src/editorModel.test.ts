@@ -79,6 +79,28 @@ describe('editor reducer', () => {
     expect(out(s)).toBe('[00:01.00]hello big world\nnext\n');
   });
 
+  it('word step: nudge moves the selected word (word 0 moves the line time too); untimed word: no-op', () => {
+    let s = run('[00:01.00]<00:01.00>a <00:02.00>b c\nd', { t: 'step', step: 'words' });
+    expect(s.word).toBe(2); // first untimed word
+    expect(reducer(s, { t: 'nudge', d: 100 })).toBe(s);
+    s = reducer(reducer(s, { t: 'pickWord', w: 1 }), { t: 'nudge', d: 100 });
+    expect(out(s)).toBe('[00:01.00]<00:01.00>a <00:02.10>b c\nd\n');
+    s = reducer(reducer(s, { t: 'pickWord', w: 0 }), { t: 'nudge', d: -100 });
+    expect(out(s)).toBe('[00:00.90]<00:00.90>a <00:02.10>b c\nd\n');
+    expect(s.past).toHaveLength(2);
+  });
+
+  it('word step: ↑/↓ choose words, crossing into the previous/next line', () => {
+    let s = run('a b\n\nc d', { t: 'step', step: 'words' }, { t: 'moveWord', d: 1 });
+    expect([s.sel, s.word]).toEqual([0, 1]);
+    s = reducer(s, { t: 'moveWord', d: 1 });
+    expect([s.sel, s.word]).toEqual([2, 0]); // blank line skipped
+    s = reducer(s, { t: 'moveWord', d: -1 });
+    expect([s.sel, s.word]).toEqual([0, 1]); // last word of the line before
+    s = reducer(reducer(s, { t: 'moveWord', d: -1 }), { t: 'moveWord', d: -1 });
+    expect([s.sel, s.word]).toEqual([0, 0]); // first word of the first line: stays
+  });
+
   describe('paste LRC', () => {
     const lrc = '[ti:Song]\n[offset:500]\n[00:10.00]<00:10.00>one <00:10.50>two\n[00:12.00]three';
     const paste = (s: State, text: string, start: number, end = start) =>

@@ -54,6 +54,14 @@ describe('LyricsView', () => {
     expect(container.querySelector('[aria-live]')).toBeNull();
   });
 
+  it('marks sung lines (data-past) so they can fade more than upcoming ones', async () => {
+    await render(LRC, 2_500);
+    const past = () => [...container.querySelectorAll('[data-past]')].map((e) => e.textContent);
+    expect(past()).toEqual(['One']);
+    await render(LRC, 500);
+    expect(past()).toEqual([]);
+  });
+
   it('subtracts offsetMs before highlighting', async () => {
     await render(LRC, 2_100, 200); // audible 1_900
     expect(current()).toEqual(['One']);
@@ -78,49 +86,113 @@ describe('LyricsView', () => {
     expect(current()).toEqual(['Hel lo']);
   });
 
-  // [sung, upcoming] text of each current line; a line-mode current line has no upcoming span.
-  const words = () =>
+  // Each current line's karaoke parts: sung phrases, the active phrase and its fill, upcoming text.
+  const karaoke = () =>
     [...container.querySelectorAll('[aria-current]')].map((e) => {
-      const up = e.querySelector('.lyrics-upcoming')?.textContent ?? null;
-      return [e.textContent!.slice(0, e.textContent!.length - (up?.length ?? 0)), up];
+      const active = e.querySelector<HTMLElement>('.lyrics-active');
+      return {
+        sung: [...e.querySelectorAll('.lyrics-sung')].map((s) => s.textContent),
+        active: active?.textContent ?? null,
+        fill: active?.style.getPropertyValue('--lyrics-fill') ?? null,
+        upcoming: e.querySelector('.lyrics-upcoming')?.textContent ?? null,
+      };
     });
+  const k = (sung: string[], active: string | null, fill: string | null, upcoming: string | null) => ({ sung, active, fill, upcoming });
 
-  it('word mode: sung words accented, upcoming muted, syllables split', async () => {
+  it('word mode: the active word fills over its duration; sung lit, upcoming muted; syllables split', async () => {
     const lrc = '[00:01.00]<00:01.00>Hel<00:01.50>lo <00:02.00>world\n[00:03.00]Next\n';
-    await render(lrc, 1_200);
-    expect(words()).toEqual([['Hel', 'lo world']]);
+    await render(lrc, 1_000);
+    expect(karaoke()).toEqual([k([], 'Hel', '0%', 'lo world')]);
+    await render(lrc, 1_250);
+    expect(karaoke()).toEqual([k([], 'Hel', '50%', 'lo world')]);
     await render(lrc, 1_500);
-    expect(words()).toEqual([['Hello ', 'world']]);
-    await render(lrc, 2_900);
-    expect(words()).toEqual([['Hello world', '']]);
+    expect(karaoke()).toEqual([k(['Hel'], 'lo', '0%', 'world')]); // the space stays outside the word box
+    await render(lrc, 1_900);
+    expect(karaoke()).toEqual([k(['Hel'], 'lo', '80%', 'world')]);
+    await render(lrc, 2_500); // last word runs to the next line's stamp
+    expect(karaoke()).toEqual([k(['Hel', 'lo'], 'world', '50%', '')]);
+    expect(container.querySelector('[aria-current]')!.textContent).toBe('Hello world'); // accessible name intact
     await render(lrc, 3_000);
-    expect(words()).toEqual([['Next', null]]); // line without word tags: whole line, as before
+    expect(karaoke()).toEqual([k([], null, null, null)]); // line without word tags: whole line, as before
+    expect(container.querySelector('[aria-current]')!.innerHTML).toBe('Next');
   });
 
-  it('phrase timing: untimed words go with the timed word before them', async () => {
+  it('a word before its stamp is upcoming; the active fill is clamped', async () => {
+    const lrc = '[00:01.00]A <00:01.50>b <00:02.00>c\n';
+    await render(lrc, 1_000); // leading untimed word: a phrase from the line stamp
+    expect(karaoke()).toEqual([k([], 'A', '0%', 'b c')]);
+    await render('[00:01.00]<00:01.20>A <00:01.50>b\n', 1_100); // first tag after the line stamp
+    expect(karaoke()).toEqual([k([], null, null, 'A b')]);
+  });
+
+  it('phrase timing: untimed words fill together with the timed word before them', async () => {
     const lrc = '[00:01.00]Oh <00:01.50>take me <00:02.50>home tonight\n';
-    await render(lrc, 1_000); // leading untimed words go with the line
-    expect(words()).toEqual([['Oh ', 'take me home tonight']]);
-    await render(lrc, 1_600);
-    expect(words()).toEqual([['Oh take me ', 'home tonight']]);
-    await render(lrc, 2_500);
-    expect(words()).toEqual([['Oh take me home tonight', '']]);
+    await render(lrc, 1_250); // leading untimed words start with the line
+    expect(karaoke()).toEqual([k([], 'Oh', '50%', 'take me home tonight')]);
+    await render(lrc, 2_000);
+    expect(karaoke()).toEqual([k(['Oh'], 'take me', '50%', 'home tonight')]);
+    await render(lrc, 2_500 + (300_000 - 2_500) / 4); // last phrase of the song runs to durationMs
+    expect(karaoke()).toEqual([k(['Oh', 'take me'], 'home tonight', '25%', '')]);
   });
 
-  it('trailing end tag: last word stays sung until and after the end', async () => {
+  it('trailing end tag: the last word fills up to it, then the whole line is lit', async () => {
     const lrc = '[00:01.00]<00:01.00>Bye <00:01.50>now<00:02.00>\n[00:05.00]Later\n';
-    await render(lrc, 1_700);
-    expect(words()).toEqual([['Bye now', '']]);
+    await render(lrc, 1_750);
+    expect(karaoke()).toEqual([k(['Bye'], 'now', '50%', '')]);
     await render(lrc, 2_500);
-    expect(words()).toEqual([['Bye now', '']]);
+    expect(karaoke()).toMatchObject([{ sung: ['Bye', 'now'], active: '', upcoming: '' }]);
   });
 
-  it('non-current lines show no word highlight', async () => {
+  it('duet: each current line fills its own active word', async () => {
+    const lrc = '[00:01.00]<00:01.00>Her <00:02.00>part\n[00:01.00]<00:01.00>His <00:01.40>line\n[00:03.00]Both\n';
+    await render(lrc, 1_500);
+    expect(karaoke()).toEqual([k([], 'Her', '50%', 'part'), k(['His'], 'line', '6.25%', '')]);
+  });
+
+  it('non-current lines are left as plain text', async () => {
     const lrc = '[00:01.00]<00:01.00>A <00:01.50>b\n[00:02.00]<00:02.00>C <00:02.50>d\n';
     await render(lrc, 2_200);
-    expect(words()).toEqual([['C ', 'd']]);
-    expect(container.querySelectorAll('.lyrics-upcoming')).toHaveLength(1);
-    expect(container.querySelector('button:not([aria-current])')!.innerHTML).toBe('A b');
+    expect(karaoke()).toEqual([k([], 'C', '40%', 'd')]);
+    expect(container.querySelectorAll('.lyrics-upcoming, .lyrics-active')).toHaveLength(2);
+    expect(container.querySelector('button:not([aria-current])')!.outerHTML).not.toMatch(/span|style/);
+  });
+
+  it('within a word, only the fill variable changes (no re-render of the list)', async () => {
+    const lrc = '[00:01.00]<00:01.00>One <00:02.00>two\n[00:03.00]Next\n';
+    await render(lrc, 1_100);
+    const active = container.querySelector('.lyrics-active')!;
+    const seen = new MutationObserver(() => {});
+    seen.observe(view(), { subtree: true, childList: true, characterData: true });
+    await render(lrc, 1_200);
+    await render(lrc, 1_700);
+    expect(seen.takeRecords()).toEqual([]); // no DOM rewrite (jsdom doesn't report custom-property style changes)
+    seen.disconnect();
+    expect(container.querySelector('.lyrics-active')).toBe(active);
+    expect(karaoke()).toEqual([k([], 'One', '70%', 'two')]);
+  });
+
+  it('CSS: text-clipped fill, RTL runs right to left, scale and transitions only with motion allowed', async () => {
+    // ponytail: no @types/node, so a non-literal specifier keeps tsc from resolving node:fs (vitest's ?raw gives '').
+    const { readFileSync } = await import('node:' + 'fs');
+    const css: string = readFileSync('src/view.css', 'utf8') // vitest runs from the repo root;
+    const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+    expect(flat).toMatch(/\.lyrics-active \{[^}]*linear-gradient\(to right, currentColor var\(--lyrics-fill, 0%\)[^}]*-webkit-background-clip: text; background-clip: text;/);
+    expect(flat).toMatch(/\.lyrics-active:dir\(rtl\) \{ background-image: linear-gradient\(to left, currentColor var\(--lyrics-fill/);
+    expect(flat).toMatch(/\.lyrics-upcoming \{ color: var\(--lyrics-muted/);
+    // Everything that moves sits in one no-preference block, so reduced motion gets none of it.
+    const at = flat.indexOf('@media (prefers-reduced-motion: no-preference) {');
+    let depth = 0;
+    let stop = at;
+    for (const c of flat.slice(at)) {
+      depth += c === '{' ? 1 : c === '}' ? -1 : 0;
+      stop++;
+      if (c === '}' && !depth) break;
+    }
+    const motion = flat.slice(at, stop);
+    expect(motion).toMatch(/button\.lyrics-line\[aria-current\] \{ transform: scale\(1\.\d+\); \}/); // line and word mode
+    expect(motion).toMatch(/\.lyrics-active \{ transform: scale\(1\.0\d\);/);
+    expect(motion).toMatch(/button\.lyrics-line:dir\(rtl\) \{ transform-origin: right center; \}/);
+    expect((flat.slice(0, at) + flat.slice(stop)).replace(/@keyframes[^}]*\}[^}]*\}/, '')).not.toMatch(/transform|transition|animation/);
   });
 
   it('clicking a line seeks to lineTime + offsetMs and highlights it immediately', async () => {

@@ -263,3 +263,139 @@ test('pasting LRC into the Lyrics box keeps its timing and says so', async ({ pa
   await page.getByRole('button', { name: 'Next: check the timing →' }).click();
   await expect(page.locator('.lyrics-editor-time')).toHaveText(['00:00.50', '00:02.00', '00:03.50']);
 });
+
+const mute = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => (a.muted = true)); // headless WebKit won't play unmuted
+const paused = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused);
+
+test('editor: tapping a stamped line seeks to its exact stamp, same as ▶ Play from here', async ({ page }) => {
+  await load(page);
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  await seek(page, 4.5);
+  await page.getByRole('button', { name: /Second line/ }).click();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(2, 2); // no rewind
+  await seek(page, 4.5);
+  await page.getByRole('button', { name: '▶ Play from here' }).click();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(2, 2);
+});
+
+test('word step: a timed word chip seeks to its stamp; Loop line jumps back to the line start, off = plays on', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'w.lrc', '[00:00.50]First line\n[00:02.00]<00:02.00>Second <00:02.60>line\n[00:03.50]Third line\n');
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  await page.getByRole('tab', { name: 'Sync words' }).click();
+  await page.getByRole('button', { name: /Second line/ }).click();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(2, 2);
+  await page.locator('.lyrics-editor-chip', { hasText: 'line' }).click();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(2.6, 2);
+
+  const loop = page.getByLabel('Loop line');
+  await expect(loop).toBeChecked(); // on by default
+  await mute(page);
+  await seek(page, 3.2);
+  await page.locator('.demo-play').click();
+  // The line runs 2.0–3.5 s: the only way below 3.2 s is the loop's seek back to 2.0 s.
+  await expect.poll(() => audioTime(page), { intervals: [50] }).toBeLessThan(3.2);
+  await page.locator('.demo-play').click();
+
+  await loop.uncheck();
+  await seek(page, 3.2);
+  await page.locator('.demo-play').click();
+  await expect.poll(() => audioTime(page)).toBeGreaterThan(3.9); // past the line end, no jump back
+  await page.locator('.demo-play').click();
+});
+
+test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, Space; Tab then Enter presses; select and textarea keep keys', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'l.txt', Array.from({ length: 8 }, (_, i) => `Line ${i + 1}`).join('\n'));
+  await mute(page);
+  const stamped = page.locator('.lyrics-editor-time', { hasNotText: '—' });
+  const current = page.locator('.lyrics-editor-row[aria-current] .lyrics-editor-text');
+  const targets = [
+    page.getByRole('button', { name: 'Zoom in' }), // the editor's own toolbar
+    page.locator('.demo-play'), // the host's Play (starts playback)
+    page.getByLabel('Seek'), // slider: native arrows would move it
+  ];
+  let n = 0;
+  for (const target of targets) {
+    await target.click();
+    const t = await audioTime(page);
+    await page.keyboard.press('s');
+    await expect(stamped).toHaveCount(++n);
+    await expect(current).toHaveText(`Line ${n + 1}`);
+    await page.keyboard.press('ArrowUp');
+    await expect(current).toHaveText(`Line ${n}`);
+    await page.keyboard.press('ArrowDown');
+    await expect(current).toHaveText(`Line ${n + 1}`);
+    if (await paused(page)) expect(await audioTime(page)).toBeCloseTo(t, 2); // the slider didn't move
+    await page.keyboard.press('Enter');
+    await expect(stamped).toHaveCount(++n);
+    const was = await paused(page);
+    await page.keyboard.press(' ');
+    await expect.poll(() => paused(page)).toBe(!was);
+    await page.keyboard.press(' ');
+    await expect.poll(() => paused(page)).toBe(was);
+  }
+  if (!(await paused(page))) await page.keyboard.press(' ');
+  await expect.poll(() => paused(page)).toBe(true);
+
+  // A <select> counts as typing (its keys pick an option): no stamp, no line change.
+  const speed = page.getByLabel('Playback speed');
+  await speed.focus();
+  await page.keyboard.press('s');
+  await page.keyboard.press('ArrowUp');
+  await expect(stamped).toHaveCount(n);
+  await expect(current).toHaveText(`Line ${n + 1}`);
+  await speed.selectOption('1');
+
+  // Tab to a button, then Enter activates it (not Stamp): +0.1 s by mouse, then Tab from the row to −0.1 s, Enter.
+  // (WebKit doesn't focus a clicked button, so the Tab starts from the row, focused by script.)
+  const row = page.getByRole('button', { name: /Line 1/ });
+  await row.click();
+  const time = page.locator('.lyrics-editor-row[aria-current] .lyrics-editor-time');
+  const before = await time.textContent();
+  await page.getByRole('button', { name: '+0.1 s' }).click();
+  await expect(time).not.toHaveText(before!);
+  await row.focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: '−0.1 s' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(time).toHaveText(before!);
+  await expect(stamped).toHaveCount(n);
+
+  // Typing in the Lyrics box types.
+  await page.getByRole('tab', { name: 'Lyrics', exact: true }).click();
+  const box = page.getByLabel('Lyrics text');
+  await box.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('s ');
+  await expect(box).toHaveValue(/Line 8s $/);
+  expect(await paused(page)).toBe(true);
+});
+
+test('preview karaoke: mid-word the active word is part-filled and the current line is enlarged (not under reduced motion)', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'k.lrc', '[00:00.50]First line\n[00:02.00]<00:02.00>Second <00:03.00>line\n[00:04.00]Third line\n');
+  await seek(page, 2.5);
+  const active = page.locator('.lyrics-view [aria-current] .lyrics-active');
+  await expect(active).toHaveText('Second');
+  const fill = () => active.evaluate((el) => parseFloat(el.style.getPropertyValue('--lyrics-fill')) / 100);
+  await expect.poll(fill).toBeGreaterThan(0.3);
+  expect(await fill()).toBeLessThan(0.7);
+  expect(await active.evaluate((el) => getComputedStyle(el).backgroundClip || getComputedStyle(el).getPropertyValue('-webkit-background-clip'))).toBe('text');
+
+  const scale = (el: Element) => new DOMMatrix(getComputedStyle(el).transform).a;
+  const current = page.locator('.lyrics-view [aria-current]');
+  await expect.poll(() => current.evaluate(scale)).toBeGreaterThan(1.03); // word mode
+  expect(await page.getByRole('button', { name: 'Third line' }).evaluate(scale)).toBe(1);
+  await seek(page, 4.2);
+  await expect(current).toHaveText('Third line');
+  await expect.poll(() => current.evaluate(scale)).toBeGreaterThan(1.03); // line mode
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await seek(page, 2.5);
+  await expect.poll(() => current.evaluate(scale)).toBe(1);
+  await expect.poll(fill).toBeGreaterThan(0.3); // the fill still shows progress
+});

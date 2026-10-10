@@ -7,6 +7,13 @@
   --demo-nav-h: 61px;
   --lyrics-sticky-top: var(--demo-nav-h); /* the editor's step tabs stick right under our Preview/Edit bar */
 }
+/* Dark: the components' default grey (#767676) is tuned for light backgrounds; map a lighter one. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lyrics-muted: #a3a3a3;
+    --demo-muted: #b0b0b0;
+  }
+}
 body {
   margin: 0 auto;
   max-width: 48rem;
@@ -92,7 +99,7 @@ summary {
 }
 .demo-file small,
 .demo-more small {
-  color: #595959;
+  color: var(--demo-muted, #595959);
 }
 .demo-sr {
   position: absolute;
@@ -230,9 +237,9 @@ summary {
   padding-block: 1.5em 3em;
 }
 .demo-hint {
-  margin: 0 0 8px;
+  margin: 0 0 12px; /* clear of the lyrics' top fade, so a line fading out doesn't look cut by the hint */
   font-size: 0.9em;
-  color: #595959;
+  color: var(--demo-muted, #595959);
 }
 .demo-cta {
   display: flex;
@@ -326,6 +333,12 @@ summary {
 .demo-time {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* Phone preview: both file rows share one line (names hidden; Edit shows them), so the lyrics get the screen. */
+@media (max-width: 480px) {
+  .demo-files[data-preview] .demo-file-name {
+    display: none;
+  }
 }
 @media (max-width: 480px) {
   .demo-dur {

@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LyricsEditor } from './LyricsEditor';
+import { isShortcut, LyricsEditor } from './LyricsEditor';
 import type { LyricsProps } from './types';
 
 let container: HTMLDivElement;
@@ -179,18 +179,16 @@ describe('Sync lines', () => {
     expect(activeTab()).toContain('Sync words');
   });
 
-  it('tapping a timed line rewinds to just before it (not before the previous line); unsynced lines don’t seek', () => {
+  it('tapping a timed line seeks to its exact stamp, the same as ▶ Play from here; unsynced lines don’t seek', () => {
     render({ lrc: '[00:01.00]a\n[00:10.00]b\nc' });
     click(rows()[1].querySelector('button')!);
-    expect(onSeek).toHaveBeenLastCalledWith(7_000); // 3 s pre-roll
-    click(rows()[0].querySelector('button')!);
-    expect(onSeek).toHaveBeenLastCalledWith(0);
-    render({ lrc: '[00:01.00]a\n[00:02.00]b\nc' });
-    click(rows()[1].querySelector('button')!);
-    expect(onSeek).toHaveBeenLastCalledWith(1_000); // not before line 1
+    expect(onSeek).toHaveBeenLastCalledWith(10_000);
+    click(button('▶ Play from here'));
+    expect(onSeek).toHaveBeenLastCalledWith(10_000);
     onSeek.mockClear();
     click(rows()[2].querySelector('button')!);
     expect(onSeek).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('rewinds');
   });
 
   it('warns (but allows) a stamp that would put the line out of order; links back to the first unsynced line', () => {
@@ -220,7 +218,7 @@ describe('Sync lines', () => {
     click(stampButton());
     expect(lastLrc()).toBe('[00:04.80]a\nb\nc\n');
     click(rows()[0].querySelector('button')!);
-    expect(onSeek).toHaveBeenLastCalledWith(2_000); // pre-roll: 4.8 − 3 s, + offset
+    expect(onSeek).toHaveBeenLastCalledWith(5_000);
     click(button('▶ Play from here'));
     expect(onSeek).toHaveBeenLastCalledWith(5_000);
   });
@@ -271,21 +269,52 @@ describe('Sync lines', () => {
     expect(lastLrc()).toBe('a\nb\nc\n');
   });
 
-  it('shortcuts: off in the textarea; S works on a checkbox, Enter/arrows keep their meaning on controls', () => {
+  it('shortcuts work on a clicked button or slider (and are preventDefaulted); off while typing', () => {
     render();
-    const box = container.appendChild(document.createElement('input'));
-    box.type = 'checkbox';
-    key('Enter', {}, box);
-    key('ArrowDown', {}, box);
-    expect(onChange).not.toHaveBeenCalled();
-    expect(selected()).toBe(0);
-    key('s', {}, box);
-    expect(lastLrc()).toBe('[00:05.00]a\nb\nc\n');
+    const slider = container.appendChild(document.createElement('input'));
+    slider.type = 'range';
+    key('ArrowDown', {}, slider);
+    expect(selected()).toBe(1);
+    const btn = button('Undo');
+    let prevented = false;
+    act(() => {
+      const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      btn.dispatchEvent(e); // a clicked button: not :focus-visible
+      prevented = e.defaultPrevented;
+    });
+    expect(prevented).toBe(true);
+    expect(lastLrc()).toBe('a\n[00:05.00]b\nc\n');
+    key('s', {}, slider);
+    expect(onChange).toHaveBeenCalledTimes(2);
     click(tab('Lyrics'));
     key('s', {}, textarea());
     key('z', { ctrlKey: true }, textarea());
     key('s');
-    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('isShortcut: anywhere but text entry; Enter/Space stay native on a :focus-visible control', () => {
+    const at = (html: string, k: string, visible = false) => {
+      const host = document.createElement('div');
+      host.innerHTML = html;
+      const el = host.firstElementChild!;
+      const e = new KeyboardEvent('keydown', { key: k });
+      Object.defineProperty(e, 'target', { value: el });
+      return isShortcut(e, () => visible);
+    };
+    expect(isShortcut(new KeyboardEvent('keydown', { key: 's' }))).toBe(true); // no target (window)
+    for (const k of ['s', 'Enter', ' ', 'ArrowDown']) {
+      expect(at('<button>x</button>', k)).toBe(true); // clicked button
+      expect(at('<input type="range">', k)).toBe(true);
+      expect(at('<select></select>', k)).toBe(false); // its keys pick an option
+      expect(at('<textarea></textarea>', k)).toBe(false);
+      expect(at('<input type="number">', k)).toBe(false);
+      expect(at('<input>', k)).toBe(false);
+    }
+    expect(at('<button>x</button>', 'Enter', true)).toBe(false); // Tab then Enter activates it
+    expect(at('<button>x</button>', ' ', true)).toBe(false);
+    expect(at('<button>x</button>', 's', true)).toBe(true);
+    expect(at('<button>x</button>', 'ArrowDown', true)).toBe(true);
   });
 
   it('flags stamps beyond durationMs, but not while durationMs is 0', () => {
@@ -329,7 +358,7 @@ describe('Sync words', () => {
     click(tab('Sync words'));
     expect($$('.lyrics-editor-badge').map((b) => b.textContent)).toEqual(['1/3 words', '0/1 words']); // every line
     expect(container.textContent).toContain('0 of 2 lines have word timing');
-    expect(container.querySelector('.lyrics-editor-progress')!.textContent).toBe('00:05.00 · paused · Line 1: word 2 of 3');
+    expect(container.querySelector('.lyrics-editor-progress')!.textContent).toBe('00:05.00 · paused · ↻ Line 1: word 2 of 3');
     click(stampButton());
     click(stampButton());
     expect(container.textContent).toContain('1 of 2 lines have word timing');
@@ -341,12 +370,73 @@ describe('Sync words', () => {
     click(tab('Sync words'));
     click($$('.lyrics-editor-chip')[1]);
     expect(stampButton().textContent).toBe('Stamp “b”');
+    render({ position: pos(2_250) }); // the chip seeked to 2.00; the host lands there
     click(stampButton());
-    expect(lastLrc()).toBe('[00:01.00]<00:01.00>a <00:05.00>b\n');
+    expect(lastLrc()).toBe('[00:01.00]<00:01.00>a <00:02.25>b\n');
     click(button('Clear word timing'));
     expect(lastLrc()).toBe('[00:01.00]a b\n');
     click(button('Undo'));
-    expect(lastLrc()).toBe('[00:01.00]<00:01.00>a <00:05.00>b\n');
+    expect(lastLrc()).toBe('[00:01.00]<00:01.00>a <00:02.25>b\n');
+  });
+});
+
+describe('Sync words: playing from words, nudges, loop', () => {
+  it('tapping a timed chip selects it and seeks to its stamp; ▶ Play names and follows the selected word', () => {
+    render({ lrc: '[00:01.00]<00:01.00>a <00:02.00>b c\n[00:04.00]d' });
+    click(tab('Sync words'));
+    onSeek.mockClear();
+    click(button('▶ Play line')); // selected word "c" is untimed: from the line start
+    expect(onSeek).toHaveBeenLastCalledWith(1_000);
+    click($$('.lyrics-editor-chip')[1]);
+    expect(onSeek).toHaveBeenLastCalledWith(2_000);
+    expect(stampButton().textContent).toBe('Stamp “b”');
+    click(button('▶ Play from “b”'));
+    expect(onSeek).toHaveBeenLastCalledWith(2_000);
+    onSeek.mockClear();
+    click($$('.lyrics-editor-chip')[2]); // untimed: selects, no seek
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(button('+0.1 s')).toBeUndefined(); // nothing to nudge
+    key('ArrowUp'); // ↑/↓ choose a word in the word step
+    expect(stampButton().textContent).toBe('Stamp “b”');
+  });
+
+  it('±0.1 s nudge the selected word; word 0 moves the line time too', () => {
+    render({ lrc: '[00:01.00]<00:01.00>a <00:02.00>b' });
+    click(tab('Sync words'));
+    click($$('.lyrics-editor-chip')[1]);
+    click(button('+0.1 s'));
+    expect(lastLrc()).toBe('[00:01.00]<00:01.00>a <00:02.10>b\n');
+    click($$('.lyrics-editor-chip')[0]);
+    click(button('−0.1 s'));
+    expect(lastLrc()).toBe('[00:00.90]<00:00.90>a <00:02.10>b\n');
+  });
+
+  it('Loop line: playing past the line end seeks to its start, once per pass; off when unticked or in the line step', () => {
+    const play = (timeMs: number) => render({ position: { ...pos(timeMs), playing: true } });
+    render({ lrc: '[00:01.00]<00:01.00>a b\n[00:03.00]c', position: pos(2_000) });
+    click(tab('Sync words'));
+    onSeek.mockClear();
+    play(2_900);
+    expect(onSeek).not.toHaveBeenCalled();
+    play(3_050);
+    expect(onSeek).toHaveBeenCalledExactlyOnceWith(1_000);
+    play(3_100); // stale tick while the host seeks: the seek hold shows 1.0 s, no second seek
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    play(1_000); // landed
+    play(3_020); // next pass
+    expect(onSeek).toHaveBeenCalledTimes(2);
+    play(1_000);
+    const loop = container.querySelector<HTMLInputElement>('.lyrics-editor-loop input')!;
+    expect(loop.checked).toBe(true);
+    click(loop);
+    play(3_500);
+    expect(onSeek).toHaveBeenCalledTimes(2);
+    play(1_000);
+    click(loop);
+    click(tab('Sync lines'));
+    play(3_500);
+    expect(onSeek).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.lyrics-editor-loop')).toBeNull(); // word step only
   });
 });
 

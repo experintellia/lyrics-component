@@ -11,10 +11,11 @@ export type Action =
   | { t: 'step'; step: Step }
   | { t: 'select'; i: number }
   | { t: 'move'; d: 1 | -1 }
+  | { t: 'moveWord'; d: 1 | -1 } // word step ↑/↓: previous/next word, across line ends
   | { t: 'stamp'; ms: number } // line step: time the selected line, advance
   | { t: 'stampWord'; ms: number } // word step: time the next word, advance
   | { t: 'pickWord'; w: number }
-  | { t: 'nudge'; d: number }
+  | { t: 'nudge'; d: number } // the selected line; in the word step the selected word (word 0 moves the line too)
   | { t: 'clear' }
   | { t: 'clearWords' }
   | { t: 'undo' }
@@ -173,8 +174,20 @@ export function reducer(s: State, a: Action): State {
     }
     case 'pickWord':
       return { ...s, word: a.w };
-    case 'nudge':
-      return line?.timeMs != null ? put(setLineTime(line, Math.max(0, line.timeMs + a.d))) : s;
+    case 'moveWord': {
+      const w = s.word + a.d;
+      if (w >= 0 && w < words(line).length) return { ...s, word: w };
+      const i = next(lines, s.sel, a.d);
+      return i === s.sel ? s : { ...s, sel: i, word: a.d > 0 ? 0 : Math.max(0, words(lines[i]).length - 1) };
+    }
+    case 'nudge': {
+      if (s.step !== 'words') return line?.timeMs != null ? put(setLineTime(line, Math.max(0, line.timeMs + a.d))) : s;
+      const ws = line ? lineWords(line.text) : [];
+      const t = ws[s.word]?.text ? ws[s.word].timeMs : null;
+      if (t === null) return s;
+      ws[s.word] = { ...ws[s.word], timeMs: Math.max(0, t + a.d) };
+      return put({ timeMs: s.word === 0 ? ws[0].timeMs : line!.timeMs, text: joinWords(ws) }); // word 0's tag = line time
+    }
     case 'clear':
       return line?.timeMs != null ? put(setLineTime(line, null)) : s;
     case 'clearWords':

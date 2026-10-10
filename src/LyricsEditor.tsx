@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, type Dispatch } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type Dispatch } from 'react';
 import { usePlaybackTime } from './clock';
 import { hasText, hasWordTimes, initState, reducer, words, type Action, type Step } from './editorModel';
 import { displayText, formatTime, parseLrc, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
 import type { LyricsProps } from './types';
 import { LyricsView } from './LyricsView';
-import { bandColor, sections, Waveform } from './Waveform';
+import { bandColor, lineSpan, sections, Waveform, wordMarks } from './Waveform';
 
 const STEPS: [Step, string, string?][] = [
   ['lyrics', 'Lyrics'],
@@ -12,15 +12,36 @@ const STEPS: [Step, string, string?][] = [
   ['words', 'Sync words', 'optional'],
 ];
 
-// Text entry only: a focused checkbox, slider or button (e.g. a host's volume/seek control) must not block S.
-const isTextField = (el: EventTarget | null) =>
-  el instanceof HTMLElement &&
-  (el.isContentEditable ||
+// Keyboard focus = :focus-visible as of when the element got focus. Asking at keydown time is useless:
+// Chromium and WebKit turn :focus-visible on for a clicked button as soon as any key is pressed.
+// ponytail: one pair of window listeners for the page, installed on import.
+let kbFocus: EventTarget | null = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('focusin', (e) => {
+    try {
+      kbFocus = e.target instanceof Element && e.target.matches(':focus-visible') ? e.target : null;
+    } catch {
+      kbFocus = null; // engine without :focus-visible
+    }
+  }, true);
+  window.addEventListener('pointerdown', () => (kbFocus = null), true); // clicking it makes it a mouse focus
+}
+const focusVisible = (el: Element) => el === kbFocus;
+
+/** The shortcut rule (the demo's Space uses it too): keys are shortcuts anywhere except while typing in a text
+ *  entry. A button or slider focused by a click must not swallow them; only on a keyboard-focused
+ *  (:focus-visible) control do Enter and Space keep their native meaning (activate it). A focused <select> counts
+ *  as typing: its arrow keys, letters, Space and Enter all pick an option, so it keeps every key. */
+export function isShortcut(e: KeyboardEvent, isFocusVisible = focusVisible): boolean {
+  const el = e.target;
+  if (!(el instanceof HTMLElement)) return true;
+  const typing =
+    el.isContentEditable ||
     el.matches(
       'textarea, select, input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=color], [type=image])',
-    ));
-// Enter and ↑/↓ keep their native meaning on these (a focused slider, <audio>, tool button).
-const NATIVE_KEYS = 'input, select, audio, video, a, button:not(.lyrics-editor-line)';
+    );
+  return !typing && !((e.key === 'Enter' || e.key === ' ') && isFocusVisible(el));
+}
 
 // No onChange = read-only (host contract): show the display instead of an editor whose edits go nowhere.
 export function LyricsEditor(p: LyricsProps) {
@@ -82,6 +103,14 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   const line = lines[s.sel] as LrcLine | undefined;
   const ws = words(line);
   const wordStep = s.step === 'words';
+  const dur = position.durationMs;
+  // Word step: the waveform fits the selected line, and (Loop line) playback loops over it.
+  const span = wordStep ? lineSpan(lines, s.sel, dur || Infinity) : null;
+  const [loop, setLoop] = useState(true);
+  // Once per pass: seek's hold shows the line start right away, so this doesn't fire again while the host seeks.
+  useEffect(() => {
+    if (loop && span && position.playing && audibleMs >= span[1]) seekRef.current(span[0]);
+  });
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: 'stampWord', ms } : { t: 'stamp', ms });
@@ -109,36 +138,26 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     });
   const todo = lines.findIndex((l) => hasText(l) && l.timeMs === null);
   const resume = todo >= 0 && todo !== s.sel ? { i: todo, no: nos[todo] } : undefined;
-  // Tapping a timed line to fix it rewinds to just before it (never before the previous line's time), so the
-  // next Stamp lands in order instead of at wherever the playhead happened to be.
-  const preRoll = (i: number) => {
-    const t = lines[i].timeMs;
-    if (t === null) return;
-    const prev = lines.slice(0, i).reduce((m, l) => (l.timeMs !== null && l.timeMs <= t ? Math.max(m, l.timeMs) : m), 0);
-    seekRef.current(Math.max(prev, t - 3000));
-  };
-  const preRollRef = useRef(preRoll);
-  preRollRef.current = preRoll;
 
-  // Shortcuts (sync steps have no text fields, so they always work there). Bound once; `keys` sees fresh state.
+  // Shortcuts, by the one rule in isShortcut. Capture phase, so a focused control can't handle them first.
+  // Bound once; `keys` sees fresh state.
   const keys = useRef<(e: KeyboardEvent) => void>(null);
   keys.current = (e) => {
-    if (isTextField(e.target)) return;
-    const native = e.target instanceof Element && !!e.target.closest(NATIVE_KEYS);
+    if (!isShortcut(e)) return;
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();
     if (mod && k === 'z') dispatch({ t: e.shiftKey ? 'redo' : 'undo' });
     else if (mod && k === 'y') dispatch({ t: 'redo' });
     else if (s.step === 'lyrics' || mod || e.altKey) return;
-    else if (k === 's' || (k === 'enter' && !native)) !e.repeat && stamp();
-    else if ((k === 'arrowup' || k === 'arrowdown') && !native) dispatch({ t: 'move', d: k === 'arrowup' ? -1 : 1 });
+    else if (k === 's' || k === 'enter') !e.repeat && stamp();
+    else if (k === 'arrowup' || k === 'arrowdown') dispatch({ t: wordStep ? 'moveWord' : 'move', d: k === 'arrowup' ? -1 : 1 });
     else return;
     e.preventDefault();
   };
   useEffect(() => {
     const h = (e: KeyboardEvent) => keys.current!(e);
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    window.addEventListener('keydown', h, true);
+    return () => window.removeEventListener('keydown', h, true);
   }, []);
 
   // Keep the selected line in view (CSS scroll-margin keeps it clear of the sticky Stamp button). Also on
@@ -149,7 +168,6 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   }, [s.sel, s.step, lines]);
 
   // The editor re-renders every animation frame while playing; the list only when its inputs change.
-  const dur = position.durationMs;
   const rows = useMemo(() => {
     // Each verse's rows get its waveform band's colour as a left edge, so bands map to verses.
     const band = new Array<number | undefined>(lines.length);
@@ -174,7 +192,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
             className="lyrics-editor-line"
             onClick={() => {
               dispatch({ t: 'select', i });
-              preRollRef.current(i);
+              if (l.timeMs !== null) seekRef.current(l.timeMs); // its exact stamp, as ▶ Play from here
             }}
           >
             <span className="lyrics-editor-no">{text ? no : '♪'}</span>
@@ -217,7 +235,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     banner = (
       <>
         Optional, for word-by-word highlighting. Tap a line, press play, then tap <b>Stamp</b> as each highlighted
-        word starts. After its last word, the next line comes up.
+        word starts. The line loops until you're done; after its last word, the next line comes up.
       </>
     );
   else if (allSynced)
@@ -233,11 +251,8 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   const progress = !textLines.length
     ? ''
     : wordStep
-      ? !ws.length
-        ? `Line ${lineNo}`
-        : s.word < ws.length
-          ? `Line ${lineNo}: word ${s.word + 1} of ${ws.length}`
-          : `Line ${lineNo}: all words timed ✓`
+      ? `${loop ? '↻ ' : ''}Line ${lineNo}${
+          !ws.length ? '' : s.word < ws.length ? `: word ${s.word + 1} of ${ws.length}` : ': all words timed ✓'}`
       : allSynced
         ? line
           ? `All ${textLines.length} lines synced ✓`
@@ -262,7 +277,19 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
             </button>
           ))}
         </div>
-        {s.step !== 'lyrics' && <Waveform peaks={peaks} timeMs={audibleMs} lines={lines} onSeek={seek} selected={s.sel} />}
+        {s.step !== 'lyrics' && (
+          <Waveform
+            peaks={peaks}
+            timeMs={audibleMs}
+            lines={lines}
+            onSeek={seek}
+            selected={s.sel}
+            fit={span}
+            marks={span ? wordMarks(line!.text, span[1], s.word) : undefined}
+            pending={wordStep && ws[s.word]?.timeMs === null ? ws[s.word].text.trim() : undefined}
+            loop={loop ? span : null}
+          />
+        )}
       </div>
 
       {s.step === 'lyrics' ? (
@@ -321,9 +348,12 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
           <p className="lyrics-editor-banner">{banner}</p>
           <p className="lyrics-editor-tip">
             {wordStep
-              ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line to time its words (it rewinds to just before the line). Drag the waveform sideways to scrub.`
-              : 'Tap any line to fix its time (it rewinds to just before the line). Drag the waveform sideways to scrub. For precise timing, set the playback speed to 0.5×.'}
-            <span className="lyrics-editor-hint"> Keys: S or Enter = Stamp · ↑/↓ = choose line · Ctrl/⌘+Z = undo</span>
+              ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line or word to play from it. Words are quick: set the playback speed to 0.5×.`
+              : 'Tap a line to play from its time. Too late? Drag the waveform back or nudge −0.1 s. For precise timing, set the playback speed to 0.5×.'}
+            <span className="lyrics-editor-hint">
+              {' '}Keys: S or Enter = Stamp · ↑/↓ = choose {wordStep ? 'word' : 'line'} · Ctrl/⌘+Z = undo. Shortcuts work
+              anywhere except while typing.
+            </span>
           </p>
           {textLines.length ? (
             <ol ref={list} className="lyrics-editor-lines">{rows}</ol>
@@ -336,13 +366,20 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
             <p className="lyrics-editor-progress">
               <span className="lyrics-editor-now" aria-label="Playback position">{formatTime(audibleMs)}</span>
               {!position.playing && <b> · paused</b>}
-              {(position.rate ?? 1) !== 1 && <b> · {position.rate}× speed</b>}
+              {(position.rate ?? 1) !== 1 && (
+                <b> · {position.rate}×<span className="lyrics-editor-wide"> speed</span></b>
+              )}
               {clash ? (
                 <b className="lyrics-editor-warn"> · ⚠ the playhead is {clash}: play from just before this line first</b>
               ) : (
                 progress && <span> · {progress}</span>
               )}
             </p>
+            {wordStep && (
+              <label className="lyrics-editor-loop">
+                <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> ↻ Loop line
+              </label>
+            )}
             {undoRedo}
             {!wordStep && allSynced && !line ? (
               // Just finished: a done card instead of a "Re-stamp" button that invites an accidental overwrite.
@@ -387,9 +424,15 @@ interface ToolProps {
 // ponytail: "play from here" = seek; whether it plays is the host's playing state (the host owns transport).
 const timedWords = (l: LrcLine) => words(l).filter((w) => w.timeMs !== null).length;
 
-const PlayHere = ({ line, seek }: Omit<ToolProps, 'dispatch'>) => (
-  <button type="button" disabled={line.timeMs === null} onClick={() => seek(line.timeMs!)}>▶ Play from here</button>
+const PlayHere = ({ ms, seek, label = 'from here' }: { ms: number | null; seek: (ms: number) => void; label?: string }) => (
+  <button type="button" disabled={ms === null} onClick={() => seek(ms!)}>▶ Play {label}</button>
 );
+const Nudges = ({ dispatch }: { dispatch: Dispatch<Action> }) =>
+  [-100, 100].map((d) => (
+    <button key={d} type="button" className="lyrics-editor-nudge" onClick={() => dispatch({ t: 'nudge', d })}>
+      {d < 0 ? '−0.1 s' : '+0.1 s'}
+    </button>
+  ));
 
 function LineTools({ line, dispatch, seek, resume }: ToolProps) {
   const back = resume && (
@@ -410,12 +453,8 @@ function LineTools({ line, dispatch, seek, resume }: ToolProps) {
       <p className="lyrics-editor-tip">
         Wrong time? Press play, then tap <b>Re-stamp</b> when the line starts. Or nudge it:
       </p>
-      {[-100, 100].map((d) => (
-        <button key={d} type="button" className="lyrics-editor-nudge" onClick={() => dispatch({ t: 'nudge', d })}>
-          {d < 0 ? '−0.1 s' : '+0.1 s'}
-        </button>
-      ))}
-      <PlayHere line={line} seek={seek} />
+      <Nudges dispatch={dispatch} />
+      <PlayHere ms={line.timeMs} seek={seek} />
       {back}
       <button type="button" className="lyrics-editor-quiet" onClick={() => dispatch({ t: 'clear' })}>Clear time</button>
     </div>
@@ -424,6 +463,7 @@ function LineTools({ line, dispatch, seek, resume }: ToolProps) {
 
 function WordTools({ line, word, dispatch, seek }: ToolProps & { word: number }) {
   const ws = words(line);
+  const sel = ws[word] as (typeof ws)[number] | undefined; // the selected word; none once all are timed
   return (
     <div className="lyrics-editor-tools" role="group" aria-label="Word timing">
       <div className="lyrics-editor-chips">
@@ -434,7 +474,10 @@ function WordTools({ line, word, dispatch, seek }: ToolProps & { word: number })
             className="lyrics-editor-chip"
             aria-current={k === word || undefined}
             data-timed={w.timeMs !== null || undefined}
-            onClick={() => dispatch({ t: 'pickWord', w: k })}
+            onClick={() => {
+              dispatch({ t: 'pickWord', w: k });
+              if (w.timeMs !== null) seek(w.timeMs); // its exact stamp, as for lines
+            }}
           >
             {w.text.trim()}
             <small>{w.timeMs === null ? '—' : formatTime(w.timeMs)}</small>
@@ -444,11 +487,11 @@ function WordTools({ line, word, dispatch, seek }: ToolProps & { word: number })
       <p className="lyrics-editor-tip">
         {!ws.length
           ? 'No words on this line.'
-          : word < ws.length
-            ? 'Tap Stamp as the blue word starts. After the last word, the next line opens. Tap a word to re-time from that word on.'
-            : 'All words timed. Tap a word to re-time from that word on.'}
+          : `${word < ws.length ? 'Tap Stamp as the blue word starts. After the last word, the next line opens.' : 'All words timed.'} Tap a timed word to hear it; Stamp then re-times it.`}
       </p>
-      <PlayHere line={line} seek={seek} />
+      {sel?.timeMs != null && <Nudges dispatch={dispatch} />}
+      {/* Names its target: the selected word if timed, else the line start. */}
+      <PlayHere ms={sel?.timeMs ?? line.timeMs} seek={seek} label={sel?.timeMs != null ? `from “${sel.text.trim()}”` : 'line'} />
       <button type="button" onClick={() => dispatch({ t: 'move', d: 1 })}>Next line →</button>
       <button
         type="button"

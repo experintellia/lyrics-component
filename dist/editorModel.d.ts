@@ -23,6 +23,9 @@ export type Action = {
     t: 'move';
     d: 1 | -1;
 } | {
+    t: 'moveWord';
+    d: 1 | -1;
+} | {
     t: 'stamp';
     ms: number;
 } | {

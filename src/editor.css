@@ -59,6 +59,21 @@
   background: var(--lyrics-bg, Canvas);
 }
 
+/* Text scrolling under the sticky head (or dock) fades out instead of looking cut in half. */
+.lyrics-editor-head::after,
+.lyrics-editor-dock::before {
+  content: '';
+  position: absolute;
+  inset: 100% 0 auto;
+  height: 16px;
+  background: linear-gradient(var(--lyrics-bg, Canvas), transparent);
+  pointer-events: none;
+}
+.lyrics-editor-dock::before {
+  inset: auto 0 calc(100% + 1px); /* above its border */
+  background: linear-gradient(transparent, var(--lyrics-bg, Canvas));
+}
+
 .lyrics-editor-tabs {
   display: flex;
   border-bottom: 1px solid var(--lyrics-muted, #888);
@@ -161,6 +176,7 @@
 .lyrics-editor .lyrics-editor-primary,
 .lyrics-editor .lyrics-editor-stamp {
   min-height: 52px;
+  text-wrap: balance; /* a wrapped label keeps its arrow company, not alone on the second line */
   font-weight: bold;
   color: #fff; /* not --lyrics-bg: that may be transparent */
   background: var(--lyrics-accent, #2a7ae2);
@@ -211,8 +227,8 @@
 .lyrics-editor-row {
   border-bottom: 1px solid rgb(128 128 128 / 0.2); /* reads as a list of tappable rows */
   border-radius: var(--lyrics-radius, 6px);
-  /* clear of the sticky tabs + waveform (~160px) and the sticky Stamp dock */
-  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 168px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
+  /* clear of the sticky tabs + waveform (~160px) and its fade, and the sticky Stamp dock */
+  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 174px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
   border-inline-start: 4px solid transparent; /* the verse's waveform band colour (inline style) */
 }
 
@@ -295,7 +311,10 @@
     flex-direction: row;
   }
   .lyrics-editor-row {
-    scroll-margin-top: calc(var(--lyrics-sticky-top, 0px) + 136px);
+    scroll-margin-top: calc(var(--lyrics-sticky-top, 0px) + 142px);
+  }
+  .lyrics-editor-wide {
+    display: none; /* "0.5×", not "0.5× speed": the status stays one line */
   }
 }
 
@@ -463,4 +482,21 @@
 
 .lyrics-editor-banner[data-ok] b {
   color: #2e7d32;
+}
+
+/* Word step: "Loop line" toggle in the dock, a 44px target. */
+.lyrics-editor-loop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-inline-end: auto;
+  cursor: pointer;
+}
+
+.lyrics-editor-loop input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--lyrics-accent, #2a7ae2);
 }

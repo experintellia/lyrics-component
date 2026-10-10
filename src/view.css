@@ -11,6 +11,15 @@
   color: var(--lyrics-fg, inherit);
   font-size: max(12px, 1em);
   line-height: 1.4;
+  container-type: inline-size; /* wide box: big lyrics, see @container below */
+}
+
+/* A wide box (desktop, TV) gets big lyrics, music-app style; the host's font size still scales them. */
+@container (min-width: 600px) {
+  .lyrics-view .lyrics-line {
+    font-size: 1.75em;
+    line-height: 1.3;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -56,15 +65,85 @@ button.lyrics-line[aria-current] {
   font-weight: bold;
 }
 
+/* Sung lines fade further than upcoming ones, so the current line (its unsung words at full muted strength)
+   stands out and there's a sense of progress. */
+button.lyrics-line:not([aria-current]) {
+  opacity: 0.75;
+}
+button.lyrics-line[data-past] {
+  opacity: 0.45;
+}
+
 @media (hover: hover) {
   button.lyrics-line:hover {
     background: rgb(128 128 128 / 0.15);
   }
 }
 
-/* word/phrase-synced current line: sung words keep the accent, upcoming ones stay muted */
+/* Word/phrase-synced current line: sung phrases lit, upcoming muted, the active phrase fills with the
+   accent from its inline start (--lyrics-fill is set per frame from JS). text-fill-color, not color, so
+   currentColor in the gradient is still the accent. */
 button.lyrics-line[aria-current] .lyrics-upcoming {
   color: var(--lyrics-muted, #767676);
+}
+.lyrics-sung,
+.lyrics-active {
+  display: inline-block; /* transformable */
+}
+.lyrics-active {
+  background: linear-gradient(to right, currentColor var(--lyrics-fill, 0%), var(--lyrics-muted, #767676) 0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.lyrics-active:dir(rtl) {
+  background-image: linear-gradient(to left, currentColor var(--lyrics-fill, 0%), var(--lyrics-muted, #767676) 0);
+}
+
+/* Size, motion only: the current line and the active word scale up (transform, so nothing reflows).
+   Lines wrap at 1/scale of the width so the scaled current line still fits, growing from its inline start;
+   so does the active word, so the gap before it stays even. A wide box scales more (phones would wrap more). */
+@media (prefers-reduced-motion: no-preference) {
+  button.lyrics-line {
+    width: calc(100% / 1.06);
+    margin-inline-end: auto;
+    transform-origin: left center;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+  }
+  button.lyrics-line:dir(rtl) {
+    transform-origin: right center;
+  }
+  button.lyrics-line[aria-current] {
+    transform: scale(1.06);
+  }
+  @container (min-width: 600px) {
+    .lyrics-view button.lyrics-line {
+      width: calc(100% / 1.15);
+    }
+    .lyrics-view button.lyrics-line[aria-current] {
+      transform: scale(1.15);
+    }
+  }
+  .lyrics-sung,
+  .lyrics-active {
+    transform-origin: left center;
+  }
+  .lyrics-sung:dir(rtl),
+  .lyrics-active:dir(rtl) {
+    transform-origin: right center;
+  }
+  .lyrics-sung {
+    transition: transform 0.25s ease-out; /* the last-sung phrase eases back */
+  }
+  .lyrics-active {
+    transform: scale(1.05);
+    animation: lyrics-grow 0.2s ease-out; /* a new element, so a transition wouldn't run */
+  }
+}
+@keyframes lyrics-grow {
+  from {
+    transform: none;
+  }
 }
 
 /* phones: larger text and more air between tap targets */
