@@ -164,3 +164,49 @@ The demo pins its `<audio>` controls and the Stamp button at the bottom on small
   work in light and dark, with the label text (if any) at the top of the band. Also tint the selected
   line's span (its stamp up to the next stamp) with the accent colour, so it's clear which part of the
   song a line covers.
+
+## v2.2: user feedback round 3 (2026-10-10)
+
+1. **Tapping a line seeks to its exact stamp**, the same as "▶ Play from here". Remove the 3 s rewind
+   and its hint text ("it rewinds to just before the line"). A stamp that is too late is fixed by dragging
+   the waveform back or nudging −0.1 s.
+2. **The waveform stays visible while the list scrolls.** Done in v2.1, pinned under the tabs. Keep it
+   that way, and keep the selected row scrolling clear of it.
+3. **The word step focuses on the selected line's audio.**
+   - The waveform view fits the line span (its stamp to the next stamp, plus a small margin) instead of
+     the global zoom. The zoom buttons may still widen it.
+   - A "Loop line" toggle, on by default and only in the word step: while playing, once audible time
+     passes the line's end, `seek(line start)`. Seek only once per pass: the seek hold covers the wait
+     for the host.
+   - The word-step instruction mentions slowing down.
+4. **Words on the waveform** in the word step:
+   - each timed word gets a marker labelled with the word;
+   - the span between two word stamps is lightly shaded;
+   - the next word to stamp is outlined or highlighted.
+   - The line step keeps line markers.
+5. **Play from a word.** Tapping a timed word chip selects it and seeks to its exact stamp, consistent
+   with lines. "▶ Play from here" plays from the selected word, or from the line start if the selected
+   word has no timing. ±0.1 s nudges work on the selected word; nudging word 0 also moves the line time.
+6. **Shortcuts don't depend on focus.**
+   - One rule: shortcuts always work except while typing in a text entry (textarea, text or number
+     input, contenteditable).
+   - A button or slider focused by a mouse or touch click must not swallow S, Enter, Space or ↑/↓:
+     handle these in a capture-phase window listener and `preventDefault` them.
+   - Exception: if the focused element `:focus-visible` (reached with the keyboard, via Tab), Enter and
+     Space activate it as usual.
+   - Keys: S and Enter stamp, ↑/↓ choose a line (or a word in the word step), Ctrl/⌘+Z undo, Ctrl/⌘+Y
+     or Shift+Ctrl/⌘+Z redo. Space plays or pauses in the demo, under the same rule.
+   - The hint says "Shortcuts work anywhere except while typing."
+   - e2e on both engines covers: after clicking any button or the slider, the keys act as shortcuts;
+     Tab then Enter still activates the focused button.
+7. **Karaoke word display (`LyricsView`).**
+   - Fill: the word being sung fills with the accent from the inline start to the inline end over its
+     duration, which runs to the next word's stamp, the trailing end tag, or the next line's stamp.
+     Implement it with `background-clip: text` (and `-webkit-` for WebKit) plus a CSS variable for
+     progress, set on the active word only via a ref, with no per-frame re-render of the list. In RTL
+     text the fill runs right to left.
+   - Sung words: fully lit.
+   - Upcoming words: muted.
+   - Size: the active word scales up slightly (inline-block, transform) and eases back. The current line
+     is slightly larger than the others in both line and word mode.
+   - `prefers-reduced-motion`: no scale or transitions; the fill still shows progress.
