@@ -94,6 +94,33 @@ describe('LyricsEditor steps', () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
+  it('pasting LRC keeps its timing at the caret (one undo step, notice); plain text pastes natively', () => {
+    const paste = (text: string, start: number, end = start) => {
+      const el = textarea();
+      el.focus();
+      el.setSelectionRange(start, end);
+      const e = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), {
+        clipboardData: { getData: () => text },
+      });
+      act(() => void el.dispatchEvent(e));
+      return e.defaultPrevented;
+    };
+    const notice = () => container.querySelector('[data-ok][role=status] b')?.textContent;
+    render({ lrc: '[00:01.00]a\n[00:20.00]b' });
+    click(tab('Lyrics'));
+    expect(paste('plain\ntext', 1)).toBe(false);
+    expect(notice()).toBeUndefined();
+    expect(paste('[ti:T]\n[00:05.00]<00:05.00>x <00:05.50>y\n[00:06.00]z', 1)).toBe(true);
+    expect(lastLrc()).toBe('[ti:T]\n[00:01.00]a\n[00:05.00]<00:05.00>x <00:05.50>y\n[00:06.00]z\n[00:20.00]b\n');
+    expect(textarea().value).toBe('a\nx y\nz\nb');
+    expect(textarea().selectionStart).toBe(7); // caret right after the pasted lines
+    expect(notice()).toBe('Kept the timing of 2 pasted lines ✓');
+    expect(button('Next: check the timing →')).toBeTruthy(); // the lyrics are timed now
+    click(button('Undo'));
+    expect(lastLrc()).toBe('[00:01.00]a\n[00:20.00]b\n');
+    expect(notice()).toBeUndefined();
+  });
+
   it('"Next" commits the text and goes to Sync lines at the first unstamped line', () => {
     render({ lrc: '' });
     expect(container.textContent).toContain('Type or paste at least one line to continue.'); // why Next is disabled
@@ -341,18 +368,19 @@ describe('LyricsEditor host contract', () => {
     expect($$('.lyrics-view button.lyrics-line').map((b) => b.textContent)).toEqual(['a']);
   });
 
-  it('waveform click seeks to the clicked time (+ offsetMs)', () => {
+  it('waveform tap seeks to the tapped time (+ offsetMs)', () => {
     render({ position: pos(20_000), offsetMs: 100 }); // audible 19.9 s, view 14.9–24.9 s
     const canvas = container.querySelector('canvas')!;
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect);
     act(() => {
-      canvas.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 75 }));
+      for (const type of ['pointerdown', 'pointerup'])
+        canvas.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 75, button: 0 }));
     });
     expect(onSeek).toHaveBeenCalledWith(14_900 + 7_500 + 100);
   });
 
   it('waveform draws only the visible range of peaks, plus ruler, markers and playhead', () => {
-    const ctx = { clearRect: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(), fillStyle: '', font: '' };
+    const ctx = { clearRect: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(), measureText: () => ({ width: 20 }), fillStyle: '', font: '' };
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100);
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(50);
@@ -362,5 +390,9 @@ describe('LyricsEditor host contract', () => {
     const cols = ctx.fillRect.mock.calls.filter((c) => c[3] === 25); // peak columns: ±0.5 of a 50 px canvas
     expect(cols).toHaveLength(100);
     expect(cols[0]).toEqual([0, 12.5, 1, 25]);
+    render({ lrc: '[00:20.00]a', peaks, position: pos(20_150) }); // playhead 1.5 px past the 00:20 tick
+    ctx.fillText.mockClear();
+    render({ lrc: '[00:20.00]a', peaks, position: pos(20_150) }); // one settled frame
+    expect(ctx.fillText.mock.calls.map((c) => c[0])).toEqual(['1']); // its label would sit under the playhead
   });
 });

@@ -78,4 +78,34 @@ describe('editor reducer', () => {
     s = reducer(s, { t: 'clearWords' });
     expect(out(s)).toBe('[00:01.00]hello big world\nnext\n');
   });
+
+  describe('paste LRC', () => {
+    const lrc = '[ti:Song]\n[offset:500]\n[00:10.00]<00:10.00>one <00:10.50>two\n[00:12.00]three';
+    const paste = (s: State, text: string, start: number, end = start) =>
+      reducer(s, { t: 'paste', doc: parseLrc(text), start, end });
+
+    it('into an empty box is a full import: stamps, word tags, meta, offset baked in', () => {
+      const s = paste(initState(parseLrc('')), lrc, 0);
+      expect(out(s)).toBe('[ti:Song]\n[00:09.50]<00:09.50>one <00:10.00>two\n[00:11.50]three\n');
+      expect([s.draft, s.pasted?.n, s.pasted?.doc === s.doc]).toEqual(['one two\nthree', 2, true]);
+    });
+
+    it('in the middle splices at the caret; the lines around keep their stamps; one undo step', () => {
+      const s0 = run('[ar:Me]\n[00:01.00]a\n[00:20.00]b');
+      const s = paste(s0, '[00:05.00]x\n[00:06.00]y\n', 1); // caret right after "a"
+      expect(out(s)).toBe('[ar:Me]\n[00:01.00]a\n[00:05.00]x\n[00:06.00]y\n[00:20.00]b\n');
+      expect(s.draft).toBe('a\nx\ny\nb');
+      expect(s.past).toHaveLength(1);
+      expect(reducer(s, { t: 'commit' })).toBe(s); // the new draft matches the lines
+      const u = reducer(s, { t: 'undo' });
+      expect([out(u), u.draft]).toEqual(['[ar:Me]\n[00:01.00]a\n[00:20.00]b\n', 'a\nb']);
+    });
+
+    it('over a selection replaces it (a line split mid-way keeps both halves)', () => {
+      const s = paste(run('[00:01.00]a\n[00:02.00]bc\n[00:03.00]d'), '[00:07.00]x', 3, 4); // selects "c"
+      expect(out(s)).toBe('[00:01.00]a\n[00:02.00]b\n[00:07.00]x\n[00:03.00]d\n');
+      const all = paste(run('[00:01.00]a\nb'), '[00:07.00]x', 0, 3);
+      expect(out(all)).toBe('[00:07.00]x\n');
+    });
+  });
 });

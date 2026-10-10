@@ -225,8 +225,9 @@ summary {
 .demo-view > .lyrics-view {
   flex: 1 1 0;
   min-height: 0;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 3em), transparent); /* the cut-off line reads as "more below" */
-  padding-bottom: 3em; /* so the last line can scroll clear of the fade */
+  /* cut-off lines read as "more above/below"; the padding lets the first and last line scroll clear of the fades */
+  mask-image: linear-gradient(to bottom, transparent, #000 1.5em, #000 calc(100% - 3em), transparent);
+  padding-block: 1.5em 3em;
 }
 .demo-hint {
   margin: 0 0 8px;
@@ -293,6 +294,30 @@ summary {
   min-height: 48px;
   font-weight: bold;
 }
+.demo-speed {
+  appearance: none; /* WebKit's native select ignores the background; the chevron is two gradients */
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 22px 0 10px;
+  font: inherit;
+  border: 1px solid var(--lyrics-accent);
+  border-radius: 8px;
+  color: var(--lyrics-accent);
+  background: transparent no-repeat;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 13px center, right 8px center;
+  background-size: 5px 5px;
+  cursor: pointer;
+}
+.demo-speed[data-slow] {
+  color: #fff; /* slowed down: hard to forget */
+  background-color: var(--lyrics-accent);
+  font-weight: bold;
+}
+.demo-speed option {
+  color: CanvasText;
+  background: Canvas;
+}
 .demo-transport input {
   flex: 1;
   min-width: 0;
@@ -301,6 +326,11 @@ summary {
 .demo-time {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .demo-dur {
+    display: none; /* phones: room for Play, speed and the seek slider */
+  }
 }
 #root:has(.demo-transport:not([hidden])) {
   --lyrics-sticky-bottom: var(--demo-transport-h);

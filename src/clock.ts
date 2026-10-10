@@ -10,6 +10,7 @@ export interface ClockState {
   tickMs: number; // last tick's timeMs
   arrival: number; // `now` when it arrived
   playing: boolean;
+  rate: number; // host playback rate: position advances rate × wall time
   floorMs: number; // "hold instead of running backwards": never show less than this
   seekMs: number | null; // seek target being held...
   seekUntil: number; // ...until this `now`
@@ -21,18 +22,19 @@ const holding = (s: ClockState, now: number) => s.seekMs !== null && now < s.see
 export function clockTime(s: ClockState, now: number): number {
   if (holding(s, now)) return s.seekMs!;
   if (!s.playing || s.fresh) return s.tickMs;
-  return Math.max(s.floorMs, s.tickMs + Math.min(now - s.arrival, CAP_MS));
+  return Math.max(s.floorMs, s.tickMs + Math.min(now - s.arrival, CAP_MS) * s.rate); // cap is wall time
 }
 
 export function startClock(p: Position, now: number): ClockState {
-  return { tickMs: p.timeMs, arrival: now, playing: p.playing, floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
+  return { tickMs: p.timeMs, arrival: now, playing: p.playing, rate: p.rate ?? 1, floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
 }
 
 export function tick(s: ClockState, p: Position, now: number): ClockState {
   // ponytail: a tick identical to the last one (same timeMs and playing) is ignored. Hosts often
   // re-render with a fresh `position` object literal; resetting `arrival` on those would freeze the
   // display. A host genuinely reporting a stalled position is covered by the 500 ms cap.
-  if (p.timeMs === s.tickMs && p.playing === s.playing) return s;
+  // A rate change counts as a tick, so interpolation re-bases at the new rate.
+  if (p.timeMs === s.tickMs && p.playing === s.playing && (p.rate ?? 1) === s.rate) return s;
   const next: ClockState = { ...startClock(p, now), seekMs: s.seekMs, seekUntil: s.seekUntil };
   if (holding(s, now)) {
     // Stale in-flight ticks are recorded but don't move the display; a tick near the target ends the hold.
@@ -96,12 +98,14 @@ export function usePlaybackTime(
     };
   }, []);
 
+  // offsetMs is output latency in wall time; at rate r it covers offsetMs × r of position.
+  const lag = offsetMs * (position.rate ?? 1);
   const seek = (audibleTargetMs: number) => {
-    const target = audibleTargetMs + offsetMs;
+    const target = audibleTargetMs + lag;
     state.current = seekClock(state.current!, target, performance.now());
     onSeek(target);
     kick();
   };
 
-  return { audibleMs: ms - offsetMs, seek };
+  return { audibleMs: ms - lag, seek };
 }

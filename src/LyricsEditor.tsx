@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useReducer, useRef, type Dispatch } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, type Dispatch } from 'react';
 import { usePlaybackTime } from './clock';
 import { hasText, hasWordTimes, initState, reducer, words, type Action, type Step } from './editorModel';
 import { displayText, formatTime, parseLrc, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
 import type { LyricsProps } from './types';
 import { LyricsView } from './LyricsView';
-import { Waveform } from './Waveform';
+import { bandColor, sections, Waveform } from './Waveform';
 
 const STEPS: [Step, string, string?][] = [
   ['lyrics', 'Lyrics'],
@@ -66,6 +66,17 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     },
     [],
   );
+
+  // Pasted LRC goes through the reducer (the textarea gets a new value), so put the caret back after it.
+  const caretFromEnd = useRef<number | null>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const ta = textRef.current;
+    if (caretFromEnd.current === null || !ta) return;
+    const at = ta.value.length - caretFromEnd.current;
+    ta.setSelectionRange(at, at);
+    caretFromEnd.current = null;
+  }, [s.pasted]);
 
   const lines = s.doc.lines;
   const line = lines[s.sel] as LrcLine | undefined;
@@ -140,6 +151,9 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   // The editor re-renders every animation frame while playing; the list only when its inputs change.
   const dur = position.durationMs;
   const rows = useMemo(() => {
+    // Each verse's rows get its waveform band's colour as a left edge, so bands map to verses.
+    const band = new Array<number | undefined>(lines.length);
+    sections(lines).forEach((sec, k) => band.fill(k, sec.from, sec.to));
     let no = 0;
     return lines.map((l, i) => {
       const text = displayText(l.text);
@@ -148,7 +162,13 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
       const sel = i === s.sel;
       const late = dur > 0 && l.timeMs !== null && l.timeMs > dur;
       return (
-        <li key={i} className="lyrics-editor-row" aria-current={sel || undefined} data-late={late || undefined}>
+        <li
+          key={i}
+          className="lyrics-editor-row"
+          aria-current={sel || undefined}
+          data-late={late || undefined}
+          style={band[i] === undefined ? undefined : { borderInlineStartColor: bandColor(band[i], 0.7) }}
+        >
           <button
             type="button"
             className="lyrics-editor-line"
@@ -189,6 +209,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   );
 
   const synced = textLines.filter((l) => l.timeMs !== null).length;
+  const pasted = s.pasted?.doc === s.doc ? s.pasted.n : 0;
   const allSynced = synced === textLines.length;
   let banner;
   if (!textLines.length) banner = <>No lyrics yet. Add them in step 1 first.</>;
@@ -225,26 +246,38 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
 
   return (
     <div className="lyrics-editor">
-      <div className="lyrics-editor-tabs" role="tablist" aria-label="Editor steps">
-        {STEPS.map(([id, name, note], k) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={s.step === id}
-            onClick={() => dispatch({ t: 'step', step: id })}
-          >
-            <span className="lyrics-editor-stepno" aria-hidden="true">{k + 1}</span> {name}
-            {note && <small aria-hidden="true">{note}</small>}
-          </button>
-        ))}
+      {/* Sticky: the step tabs, and while syncing the waveform, so it stays in view next to the line being fixed. */}
+      <div className="lyrics-editor-head">
+        <div className="lyrics-editor-tabs" role="tablist" aria-label="Editor steps">
+          {STEPS.map(([id, name, note], k) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={s.step === id}
+              onClick={() => dispatch({ t: 'step', step: id })}
+            >
+              <span className="lyrics-editor-stepno" aria-hidden="true">{k + 1}</span> {name}
+              {note && <small aria-hidden="true">{note}</small>}
+            </button>
+          ))}
+        </div>
+        {s.step !== 'lyrics' && <Waveform peaks={peaks} timeMs={audibleMs} lines={lines} onSeek={seek} selected={s.sel} />}
       </div>
 
       {s.step === 'lyrics' ? (
         <div role="tabpanel" aria-label="Lyrics" className="lyrics-editor-panel">
-          <p className="lyrics-editor-banner" id="lyrics-editor-howto">
-            Type or paste the lyrics — one line per row; blank line between verses.
-          </p>
+          {pasted ? (
+            // Replaces the how-to: pasted time tags vanish from the box, so say where they went.
+            <p className="lyrics-editor-banner" data-ok role="status" id="lyrics-editor-howto">
+              <b>Kept the timing of {pasted} pasted line{pasted === 1 ? '' : 's'} ✓</b> The pasted lyrics had
+              timestamps; they're in the Sync lines step now, not in this box. Undo removes the paste.
+            </p>
+          ) : (
+            <p className="lyrics-editor-banner" id="lyrics-editor-howto">
+              Type or paste the lyrics — one line per row; blank line between verses.
+            </p>
+          )}
           <textarea
             className="lyrics-editor-text-input"
             aria-label="Lyrics text"
@@ -254,11 +287,20 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
             value={s.draft}
             onChange={(e) => dispatch({ t: 'draft', text: e.target.value })}
             onBlur={() => dispatch({ t: 'commit' })}
+            ref={textRef}
+            onPaste={(e) => {
+              const doc = parseLrc(e.clipboardData.getData('text/plain'));
+              if (!doc.lines.some((l) => l.timeMs !== null)) return; // plain text: the browser pastes it
+              e.preventDefault();
+              const { selectionStart: start, selectionEnd: end } = e.currentTarget;
+              caretFromEnd.current = s.draft.length - end;
+              dispatch({ t: 'paste', doc, start, end });
+            }}
           />
           <div className="lyrics-editor-dock">
             <p className="lyrics-editor-progress">
               {s.draft.trim()
-                ? `${s.draft.split('\n').filter((r) => r.trim()).length} lines`
+                ? `${s.draft.split('\n').filter((r) => r.trim()).length} lines${synced ? ` · ${synced} timed` : ''}`
                 : dur
                   ? 'Type or paste at least one line to continue.'
                   : 'Load the song and add at least one line to continue.'}
@@ -270,18 +312,17 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
               disabled={!s.draft.trim()}
               onClick={() => dispatch({ t: 'step', step: 'lines' })}
             >
-              Next: sync to the music →
+              {synced ? 'Next: check the timing →' : 'Next: sync to the music →'}
             </button>
           </div>
         </div>
       ) : (
         <div role="tabpanel" aria-label={wordStep ? 'Sync words' : 'Sync lines'} className="lyrics-editor-panel">
           <p className="lyrics-editor-banner">{banner}</p>
-          <Waveform peaks={peaks} timeMs={audibleMs} lines={lines} onSeek={seek} />
           <p className="lyrics-editor-tip">
             {wordStep
-              ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line to time its words (it rewinds to just before the line).`
-              : 'Tap any line to fix its time (it rewinds to just before the line).'}
+              ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line to time its words (it rewinds to just before the line). Drag the waveform sideways to scrub.`
+              : 'Tap any line to fix its time (it rewinds to just before the line). Drag the waveform sideways to scrub. For precise timing, set the playback speed to 0.5×.'}
             <span className="lyrics-editor-hint"> Keys: S or Enter = Stamp · ↑/↓ = choose line · Ctrl/⌘+Z = undo</span>
           </p>
           {textLines.length ? (
@@ -295,6 +336,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
             <p className="lyrics-editor-progress">
               <span className="lyrics-editor-now" aria-label="Playback position">{formatTime(audibleMs)}</span>
               {!position.playing && <b> · paused</b>}
+              {(position.rate ?? 1) !== 1 && <b> · {position.rate}× speed</b>}
               {clash ? (
                 <b className="lyrics-editor-warn"> · ⚠ the playhead is {clash}: play from just before this line first</b>
               ) : (

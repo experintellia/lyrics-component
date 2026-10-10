@@ -101,6 +101,18 @@ describe('clock state machine', () => {
     expect(clockTime(s, 60_100)).toBe(10_000);
   });
 
+  it('rate 0.5: interpolates at half speed, cap stays 500 ms of wall time', () => {
+    const s = startClock({ ...pos(10_000), rate: 0.5 }, 0);
+    expect(clockTime(s, 200)).toBe(10_100);
+    expect(clockTime(s, 499)).toBe(10_249.5);
+    expect(clockTime(s, 5_000)).toBe(10_250);
+  });
+
+  it('a rate change with the same timeMs re-bases interpolation', () => {
+    const s = tick(startClock(pos(10_000), 0), { ...pos(10_000), rate: 0.5 }, 0);
+    expect(clockTime(s, 200)).toBe(10_100);
+  });
+
   it('visible again: clears a slightly-behind hold floor', () => {
     let s = tick(startClock(pos(10_000), 0), pos(10_100), 250); // floor 10_250
     s = tick(visibleClock(s), pos(10_050), 300);
@@ -152,6 +164,17 @@ describe('usePlaybackTime', () => {
     expect(out.audibleMs).toBe(9_800);
     await step(100);
     expect(out.audibleMs).toBe(9_900);
+  });
+
+  it('rate 0.5: subtracts offsetMs × rate and seeks to target + offsetMs × rate', async () => {
+    await render({ ...pos(10_000), rate: 0.5 }, 200);
+    expect(out.audibleMs).toBe(9_900);
+    await step(100);
+    expect(out.audibleMs).toBe(9_950);
+    await act(() => out.seek(30_000));
+    expect(onSeek).toHaveBeenCalledWith(30_100);
+    await step(16); // frames already running: the next one shows the held target
+    expect(out.audibleMs).toBe(30_000);
   });
 
   it('runs no frames while paused', async () => {

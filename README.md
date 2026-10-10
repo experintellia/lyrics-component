@@ -45,6 +45,9 @@ A blank line shows as a stanza gap in every mode (in LRC, one blank line after a
 `<LyricsEditor>` walks the user through three steps (tabs at the top):
 
 1. **Lyrics**: one text box, one line per row, a blank line between verses. Opens here when `lrc` is empty.
+   Pasting LRC (any line starts with a time tag) works like loading the file: the pasted lines go in at
+   the caret (or replace the selection) with their stamps and word tags, its metadata is merged, and a
+   notice says "Kept the timing of N pasted lines". One undo step. Plain-text pastes are untouched.
 2. **Sync lines**: press play (host transport), then tap **Stamp** as each highlighted line starts.
    The Stamp button names its target ("Stamp line 3", or "Re-stamp line 3" for a line that has a
    time). Tapping a timed line selects it, rewinds (via `onSeek`) to just before it, and shows nudge
@@ -64,8 +67,14 @@ not playing, and progress such as "6 of 16 lines synced" or "Line 5: word 4 of 7
 clear where you are. The step tabs are sticky too: if your page has its own sticky header, set
 `--lyrics-sticky-top` to its height so the tabs stick right under it. The component has no play button (the host
 owns transport): put yours right under it. On phones, set `--lyrics-sticky-bottom` to the height of
-any transport bar you pin at the bottom so the Stamp bar sits above it. The waveform marks each
-stamp with its line number.
+any transport bar you pin at the bottom so the Stamp bar sits above it.
+
+The waveform stays centred on the playhead and marks each stamp with its line number. Tap it to jump
+to that spot, or drag it sideways to scrub like tape (drag left = forward); `onSeek` fires once, on
+release. Vertical swipes still scroll the page. Sections are drawn as alternating coloured bands: a
+section starts at the first line, after a blank line, or at an unstamped label line such as `[Chorus]`
+(the label is shown on the band). The selected line's span (its stamp to the next) is tinted with the
+accent colour. For precise stamps, let the user slow playback down and report it as `position.rate`.
 
 ## Host contract
 
@@ -73,7 +82,7 @@ stamp with its line number.
 interface LyricsProps {
   lrc: string;                         // LRC or plain text; "" = none
   onChange?: (lrc: string) => void;    // editor only; absent = read-only
-  position: { timeMs: number; playing: boolean; durationMs: number };
+  position: { timeMs: number; playing: boolean; durationMs: number; rate?: number }; // rate: default 1
   onSeek: (timeMs: number) => void;    // a request; may take up to ~1 s to apply
   peaks?: { min: Float32Array; max: Float32Array; msPerBucket: number };
   offsetMs?: number;                   // output latency compensation, per device
@@ -83,10 +92,12 @@ interface LyricsProps {
 - **Remount on track change** with `key={trackId}`: it resets undo, scroll and timing state.
 - **Position:** send a new value when it changes (a few times per second while playing, once
   when paused, once when a seek lands). The components interpolate between ticks with
-  `requestAnimationFrame`, hold a seek target until the host catches up (or 1 s passes), and
-  never run backwards on a slightly late tick.
-- **Offset:** highlighting and stamping use `position − offsetMs`; seeks request
-  `lineTime + offsetMs`. `offsetMs` is never written to the LRC.
+  `requestAnimationFrame` at `rate` × wall time, hold a seek target until the host catches up (or
+  1 s passes), and never run backwards on a slightly late tick. Send `rate` if you offer slow-down
+  (e.g. `audio.playbackRate`); the speed control is yours, like Play.
+- **Offset:** `offsetMs` is latency in wall time, so at playback rate `r` highlighting and stamping
+  use `position − offsetMs × r` and seeks request `lineTime + offsetMs × r`. `offsetMs` is never
+  written to the LRC.
 - **onChange** fires immediately for stamps, nudges, clears and undo, and for text after blur or
   500 ms idle. Store the result wherever you like; passing it back as `lrc` does not reset the
   editor.

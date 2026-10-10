@@ -58,7 +58,7 @@ function App() {
 
   const sync = () => {
     const a = audio.current!;
-    setPosition({ timeMs: a.currentTime * 1000, playing: !a.paused, durationMs: a.duration * 1000 || 0 });
+    setPosition({ timeMs: a.currentTime * 1000, playing: !a.paused, durationMs: a.duration * 1000 || 0, rate: a.playbackRate });
   };
   const onSeek = (ms: number) => {
     if (audio.current) audio.current.currentTime = ms / 1000;
@@ -104,13 +104,9 @@ function App() {
   // Typing lyrics doesn't end the empty state: collapsing the header on the textarea's blur would move Next
   // out from under the finger between pointerdown and click.
   const fresh = !file && !loads;
-  const lyricsInfo = lyricsName
-    ? `${lyricsName} · ${lines.length} lines`
-    : lines.length
-      ? `${lines.length} typed line${lines.length === 1 ? '' : 's'}`
-      : fresh
-        ? '(optional)'
-        : 'none yet';
+  const count = `${lines.length} ${stamped === lines.length ? 'timed ' : lyricsName ? '' : 'typed '}line${lines.length === 1 ? '' : 's'}${
+    stamped && stamped < lines.length ? `, ${stamped} timed` : ''}`;
+  const lyricsInfo = lyricsName ? `${lyricsName} · ${count}` : lines.length ? count : fresh ? '(optional)' : 'none yet';
   return (
     <>
       {/* Empty state: a short how-to. Once something is loaded it shrinks to one compact row. */}
@@ -217,16 +213,26 @@ function App() {
           (--lyrics-sticky-bottom). Our own controls: native ones look disabled and hide Play on phones. */}
       <div className="demo-transport" hidden={!url}>
         <audio ref={audio} src={url || undefined} onTimeUpdate={sync} onPlay={sync} onPause={sync}
-          onSeeked={sync} onDurationChange={sync} />
+          onSeeked={sync} onDurationChange={sync} onRateChange={sync} />
         {/* Paused: Play is the primary button (the editor's Stamp steps back), so it's pressed first. */}
         <button type="button" className="demo-play" onClick={toggle} aria-keyshortcuts="Space" title="Play/pause (Space)"
           data-primary={!position.playing || undefined}>
           {position.playing ? '❚❚ Pause' : '▶ Play'}
           <kbd className="demo-key" aria-hidden="true">Space</kbd>
         </button>
+        {/* Slow down for precise stamps. Pitch is preserved by default. defaultPlaybackRate too, so the speed
+            survives loading another file (a new src resets playbackRate to it). */}
+        <select className="demo-speed" aria-label="Playback speed" title="Playback speed" value={position.rate ?? 1}
+          data-slow={(position.rate ?? 1) !== 1 || undefined}
+          onChange={(e) => {
+            const a = audio.current!;
+            a.defaultPlaybackRate = a.playbackRate = +e.target.value;
+          }}>
+          {[1, 0.75, 0.5].map((r) => <option key={r} value={r}>{r}×</option>)}
+        </select>
         <input type="range" aria-label="Seek" min={0} max={position.durationMs} step={100} value={position.timeMs}
           onChange={(e) => onSeek(+e.target.value)} />
-        <span className="demo-time">{clock(position.timeMs)} / {clock(position.durationMs)}</span>
+        <span className="demo-time">{clock(position.timeMs)}<span className="demo-dur"> / {clock(position.durationMs)}</span></span>
       </div>
     </>
   );

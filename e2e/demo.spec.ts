@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { audioTime, loadAudio, loadLyrics, seek } from './fixtures';
+import { audioTime, loadAudio, loadLyrics, pasteOver, seek } from './fixtures';
 
 const LRC = '[ti:Tone]\n[00:00.50]First line\n[00:02.00]Second line\n[00:03.50]Third line\n';
 
@@ -182,4 +182,84 @@ test('tap-along on a phone: the selected line stays clear of the Stamp bar, and 
     expect(sel.y, `after stamp ${i + 1}`).toBeGreaterThanOrEqual(tabs.y + tabs.height);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390); // no sideways scroll
+});
+
+test('waveform: drag left scrubs forward and seeks once on release; a tap still seeks', async ({ page }) => {
+  await load(page);
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  await seek(page, 1);
+  await expect(page.getByLabel('Playback position')).toHaveText('00:01.00'); // the drag starts from what's shown
+  const canvas = page.locator('.lyrics-wave canvas');
+  const box = (await canvas.boundingBox())!;
+  const y = box.y + box.height / 2;
+  const x = box.x + box.width * 0.7;
+  const pixels = () => canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  const before = await pixels();
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - box.width * 0.2, y, { steps: 5 }); // 20% of the 10 s view = 2 s
+  await expect.poll(pixels).not.toBe(before); // the view follows the drag...
+  expect(await audioTime(page)).toBeCloseTo(1, 2); // ...but nothing is seeked yet
+  await page.mouse.up();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(3, 1);
+
+  // Tap without moving: the view spans 0–10 s around 3 s, so 25% across is 2.5 s.
+  await page.mouse.click(box.x + box.width * 0.25, y);
+  await expect.poll(() => audioTime(page)).toBeCloseTo(2.5, 1);
+});
+
+test('waveform: a horizontal touch drag on a phone scrubs (touch-action: pan-y)', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Playwright drives touch drags through CDP, Chromium only');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await load(page);
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  await seek(page, 1);
+  await expect(page.getByLabel('Playback position')).toHaveText('00:01.00');
+  const box = (await page.locator('.lyrics-wave canvas').boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(box.y + box.height / 2) }],
+    });
+  const x = box.x + box.width * 0.7;
+  await touch('touchStart', x);
+  for (let k = 1; k <= 5; k++) await touch('touchMove', x - (box.width * 0.2 * k) / 5);
+  expect(await audioTime(page)).toBeCloseTo(1, 2);
+  await touch('touchEnd', 0);
+  await expect.poll(() => audioTime(page)).toBeCloseTo(3, 1);
+});
+
+test('slow down: 0.5× sets the audio rate and stamps land on the audible time', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'l.txt', 'One\nTwo\n');
+  await page.getByLabel('Playback speed').selectOption('0.5');
+  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.playbackRate)).toBe(0.5);
+  await page.locator('audio').evaluate((a: HTMLAudioElement) => (a.muted = true));
+  await page.getByRole('button', { name: '▶ Play' }).click();
+  await expect.poll(() => audioTime(page)).toBeGreaterThan(1);
+  // Stamp and read the audio clock in the same task, so the only slack is the clock's interpolation.
+  const [t0, t1] = await page.evaluate(() => {
+    const a = document.querySelector('audio')!;
+    const t0 = a.currentTime;
+    document.querySelector<HTMLButtonElement>('.lyrics-editor-stamp')!.click();
+    return [t0, a.currentTime];
+  });
+  await page.getByRole('button', { name: '❚❚ Pause' }).click();
+  const [m, s] = (await page.locator('.lyrics-editor-time').first().textContent())!.split(':').map(Number);
+  expect(m * 60 + s).toBeGreaterThanOrEqual(t0 - 0.08);
+  expect(m * 60 + s).toBeLessThanOrEqual(t1 + 0.08);
+});
+
+test('pasting LRC into the Lyrics box keeps its timing and says so', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  const box = page.getByLabel('Lyrics text');
+  await pasteOver(box, LRC);
+  await expect(box).toHaveValue('First line\nSecond line\nThird line');
+  await expect(page.getByRole('status')).toContainText('Kept the timing of 3 pasted lines ✓');
+  await page.getByRole('button', { name: 'Next: check the timing →' }).click();
+  await expect(page.locator('.lyrics-editor-time')).toHaveText(['00:00.50', '00:02.00', '00:03.50']);
 });

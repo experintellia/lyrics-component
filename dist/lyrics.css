@@ -129,14 +129,22 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
   }
 }
 
-/* --- Step tabs: sticky, so "which step am I in" survives scrolling. A host with its own sticky header sets
-   --lyrics-sticky-top to that header's height. */
-.lyrics-editor-tabs {
+/* --- Step tabs (+ the waveform while syncing): sticky, so "which step am I in" and the waveform survive
+   scrolling the line list. A host with its own sticky header sets --lyrics-sticky-top to that header's height.
+   Opaque down to its padding, so scrolled rows vanish cleanly underneath. */
+.lyrics-editor-head {
   position: sticky;
   z-index: 1;
   top: var(--lyrics-sticky-top, 0px);
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
   background: var(--lyrics-bg, Canvas);
+}
+
+.lyrics-editor-tabs {
+  display: flex;
   border-bottom: 1px solid var(--lyrics-muted, #888);
 }
 
@@ -255,7 +263,12 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
   flex: 1;
   min-width: 0;
   height: 92px;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: pan-y; /* horizontal drags scrub; vertical ones still scroll the page */
+}
+
+.lyrics-wave canvas:active {
+  cursor: grabbing;
 }
 
 .lyrics-wave-zoom {
@@ -265,9 +278,8 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
 }
 
 .lyrics-editor .lyrics-wave-zoom button {
-  padding: 0 6px;
-  font-size: max(12px, 0.8em);
-  white-space: nowrap;
+  padding: 0;
+  font-size: 1.3em;
 }
 
 .lyrics-editor-lines {
@@ -283,8 +295,9 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
 .lyrics-editor-row {
   border-bottom: 1px solid rgb(128 128 128 / 0.2); /* reads as a list of tappable rows */
   border-radius: var(--lyrics-radius, 6px);
-  /* clear of the sticky step tabs (~56px) and the sticky Stamp dock */
-  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 64px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
+  /* clear of the sticky tabs + waveform (~160px) and the sticky Stamp dock */
+  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 168px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
+  border-inline-start: 4px solid transparent; /* the verse's waveform band colour (inline style) */
 }
 
 .lyrics-editor-row[aria-current] {
@@ -357,6 +370,16 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
   }
   .lyrics-editor-text {
     grid-area: 1 / 2;
+  }
+  /* A shorter waveform with the zoom buttons beside it, so it can stay pinned on a phone. */
+  .lyrics-wave canvas {
+    height: 64px;
+  }
+  .lyrics-wave-zoom {
+    flex-direction: row;
+  }
+  .lyrics-editor-row {
+    scroll-margin-top: calc(var(--lyrics-sticky-top, 0px) + 136px);
   }
 }
 
@@ -514,4 +537,14 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
 
 .lyrics-editor .lyrics-editor-done button {
   flex: 1 1 10em;
+}
+
+/* "Kept the timing of N pasted lines" replaces the how-to. */
+.lyrics-editor-banner[data-ok] {
+  border-left-color: #2e7d32;
+  background: rgb(46 125 50 / 0.1);
+}
+
+.lyrics-editor-banner[data-ok] b {
+  color: #2e7d32;
 }

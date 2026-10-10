@@ -4,6 +4,7 @@ export interface ClockState {
     tickMs: number;
     arrival: number;
     playing: boolean;
+    rate: number;
     floorMs: number;
     seekMs: number | null;
     seekUntil: number;

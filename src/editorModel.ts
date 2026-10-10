@@ -6,6 +6,7 @@ export type Step = 'lyrics' | 'lines' | 'words';
 export type Action =
   | { t: 'load'; doc: LrcDoc }
   | { t: 'draft'; text: string } // textarea keystroke: no doc change yet
+  | { t: 'paste'; doc: LrcDoc; start: number; end: number } // LRC pasted over draft[start, end)
   | { t: 'commit' } // textarea blur / 500 ms idle: draft → lines, one undo step
   | { t: 'step'; step: Step }
   | { t: 'select'; i: number }
@@ -28,6 +29,7 @@ export interface State {
   word: number; // next word to stamp in the selected line (word step)
   draft: string; // textarea content; becomes lines on commit
   emit: boolean; // report this doc via onChange (false after a load from the host)
+  pasted?: { n: number; doc: LrcDoc }; // "kept the timing of n lines" notice, shown while doc is current
 }
 
 export const hasText = (l: LrcLine | undefined) => !!l && !!displayText(l.text);
@@ -121,6 +123,24 @@ export function reducer(s: State, a: Action): State {
       return { ...s, draft: a.text };
     case 'commit':
       return applyDraft(s);
+    case 'paste': {
+      // Pasted LRC = an import at the caret: its lines keep stamps and word tags, the lines around keep theirs.
+      const c = applyDraft(s); // typing not yet committed is its own undo step (as for undo)
+      const before = c.draft.slice(0, a.start);
+      const after = c.draft.slice(a.end);
+      const pre = before && !before.endsWith('\n') ? before + '\n' : before;
+      const post = after && !after.startsWith('\n') ? '\n' + after : after;
+      const k = a.doc.lines.length;
+      // Diff with placeholder rows ('\0' matches no lyric), then put the pasted lines in their place.
+      const lines = applyText(c.doc.lines, pre + Array(k).fill('\0').join('\n') + post);
+      lines.splice(pre.split('\n').length - 1, k, ...a.doc.lines);
+      const keys = new Set(a.doc.meta.map((m) => m.key));
+      const doc = { meta: [...c.doc.meta.filter((m) => !keys.has(m.key)), ...a.doc.meta], lines };
+      const sel = Math.min(c.sel, lines.length - 1);
+      const draft = pre + a.doc.lines.map((l) => displayText(l.text)).join('\n') + post;
+      const n = a.doc.lines.filter((l) => l.timeMs !== null).length;
+      return { ...c, doc, past: [...c.past, c.doc], future: [], emit: true, sel, word: nextWord(lines[sel]), draft, pasted: { n, doc } };
+    }
     case 'step': {
       const c = applyDraft(s);
       const l = c.doc.lines;

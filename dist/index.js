@@ -8,13 +8,13 @@ const holding = (s, now) => s.seekMs !== null && now < s.seekUntil;
 function clockTime(s, now) {
   if (holding(s, now)) return s.seekMs;
   if (!s.playing || s.fresh) return s.tickMs;
-  return Math.max(s.floorMs, s.tickMs + Math.min(now - s.arrival, CAP_MS));
+  return Math.max(s.floorMs, s.tickMs + Math.min(now - s.arrival, CAP_MS) * s.rate);
 }
 function startClock(p, now) {
-  return { tickMs: p.timeMs, arrival: now, playing: p.playing, floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
+  return { tickMs: p.timeMs, arrival: now, playing: p.playing, rate: p.rate ?? 1, floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
 }
 function tick(s, p, now) {
-  if (p.timeMs === s.tickMs && p.playing === s.playing) return s;
+  if (p.timeMs === s.tickMs && p.playing === s.playing && (p.rate ?? 1) === s.rate) return s;
   const next2 = { ...startClock(p, now), seekMs: s.seekMs, seekUntil: s.seekUntil };
   if (holding(s, now)) {
     if (Math.abs(p.timeMs - s.seekMs) <= SNAP_MS) next2.seekMs = null;
@@ -65,13 +65,14 @@ function usePlaybackTime(position, offsetMs, onSeek) {
       raf.current = 0;
     };
   }, []);
+  const lag = offsetMs * (position.rate ?? 1);
   const seek = (audibleTargetMs) => {
-    const target = audibleTargetMs + offsetMs;
+    const target = audibleTargetMs + lag;
     state.current = seekClock(state.current, target, performance.now());
     onSeek(target);
     kick();
   };
-  return { audibleMs: ms - offsetMs, seek };
+  return { audibleMs: ms - lag, seek };
 }
 const RESUME_MS = 3e3;
 function sungCount(words2, ms) {
@@ -225,6 +226,22 @@ function reducer(s, a) {
       return { ...s, draft: a.text };
     case "commit":
       return applyDraft(s);
+    case "paste": {
+      const c = applyDraft(s);
+      const before = c.draft.slice(0, a.start);
+      const after = c.draft.slice(a.end);
+      const pre = before && !before.endsWith("\n") ? before + "\n" : before;
+      const post = after && !after.startsWith("\n") ? "\n" + after : after;
+      const k = a.doc.lines.length;
+      const lines2 = applyText(c.doc.lines, pre + Array(k).fill("\0").join("\n") + post);
+      lines2.splice(pre.split("\n").length - 1, k, ...a.doc.lines);
+      const keys = new Set(a.doc.meta.map((m) => m.key));
+      const doc = { meta: [...c.doc.meta.filter((m) => !keys.has(m.key)), ...a.doc.meta], lines: lines2 };
+      const sel = Math.min(c.sel, lines2.length - 1);
+      const draft = pre + a.doc.lines.map((l) => displayText(l.text)).join("\n") + post;
+      const n = a.doc.lines.filter((l) => l.timeMs !== null).length;
+      return { ...c, doc, past: [...c.past, c.doc], future: [], emit: true, sel, word: nextWord(lines2[sel]), draft, pasted: { n, doc } };
+    }
     case "step": {
       const c = applyDraft(s);
       const l = c.doc.lines;
@@ -270,10 +287,44 @@ function reducer(s, a) {
 }
 const STEPS$1 = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1e3);
 const clampSpan = (ms) => Math.min(6e5, Math.max(1e3, ms));
-function Waveform({ peaks, timeMs, lines, onSeek }) {
+const DRAG_PX = 4;
+const HUES = [30, 150, 290];
+const bandColor = (k, alpha = 0.2) => `hsl(${HUES[k % HUES.length]} 75% 50% / ${alpha})`;
+const LABEL = /^\[.+\]$/;
+const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
+const stampFrom = (lines, i, end) => {
+  var _a;
+  return ((_a = lines.slice(i).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs) ?? end;
+};
+function sections(lines, durationMs = Infinity) {
+  var _a;
+  const out = [];
+  for (let i = 0; i < lines.length; ) {
+    if (!displayText(lines[i].text)) {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < lines.length && displayText(lines[j].text) && !isLabel(lines[j])) j++;
+    const start = (_a = lines.slice(i, j).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs;
+    const label = isLabel(lines[i]) ? displayText(lines[i].text).slice(1, -1) : "";
+    if (start != null) out.push({ startMs: start, endMs: Math.max(start, stampFrom(lines, j, durationMs)), label, from: i, to: j });
+    i = j;
+  }
+  return out;
+}
+function lineSpan(lines, i, durationMs = Infinity) {
+  var _a;
+  const t = (_a = lines[i]) == null ? void 0 : _a.timeMs;
+  return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];
+}
+function Waveform({ peaks, timeMs, lines, onSeek, selected }) {
   const ref = useRef(null);
   const [span, setSpan] = useState(1e4);
-  const start = Math.max(0, timeMs - span / 2);
+  const press = useRef(null);
+  const [dragMs, setDragMs] = useState(null);
+  const centre = dragMs ?? timeMs;
+  const start = Math.max(0, centre - span / 2);
   useEffect(() => {
     const c = ref.current;
     const onWheel = (e) => {
@@ -296,9 +347,26 @@ function Waveform({ peaks, timeMs, lines, onSeek }) {
     if (!w || !h) return;
     const cs = getComputedStyle(c);
     const cssVar = (name, d) => cs.getPropertyValue(name).trim() || d;
+    const accent = cssVar("--lyrics-accent", "#2a7ae2");
     const msPx = span / w;
     const x = (t) => Math.round((t - start) / msPx);
+    const clampX = (t) => Math.min(w, Math.max(0, x(t)));
+    const font = (px, weight = "") => `${weight} ${px * dpr}px ${cs.fontFamily || "sans-serif"}`;
+    const duration = peaks ? peaks.max.length * peaks.msPerBucket : Infinity;
     ctx.clearRect(0, 0, w, h);
+    const secs = sections(lines, duration);
+    secs.forEach((s, k) => {
+      ctx.fillStyle = bandColor(k);
+      ctx.fillRect(clampX(s.startMs), 0, clampX(s.endMs) - clampX(s.startMs), h);
+    });
+    const sel = selected === void 0 ? null : lineSpan(lines, selected, duration);
+    if (sel) {
+      ctx.clearRect(clampX(sel[0]), 0, clampX(sel[1]) - clampX(sel[0]), h);
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(clampX(sel[0]), 0, clampX(sel[1]) - clampX(sel[0]), h);
+      ctx.globalAlpha = 1;
+    }
     if (peaks) {
       ctx.fillStyle = cssVar("--lyrics-muted", "#888");
       const mid = h / 2;
@@ -315,11 +383,14 @@ function Waveform({ peaks, timeMs, lines, onSeek }) {
       }
     }
     ctx.fillStyle = cs.color;
-    ctx.font = `${12 * dpr}px ${cs.fontFamily || "sans-serif"}`;
+    ctx.font = font(12);
+    const head = x(centre);
     const step = STEPS$1.find((s) => s / msPx >= 64 * dpr) ?? STEPS$1[STEPS$1.length - 1];
     for (let t = Math.ceil(start / step) * step; t < start + span; t += step) {
       ctx.fillRect(x(t), 0, dpr, 6 * dpr);
-      ctx.fillText(formatTime(t).replace(/\.\d+$/, ""), x(t) + 3 * dpr, 18 * dpr);
+      const text = formatTime(t).replace(/\.\d+$/, "");
+      const x1 = x(t) + 6 * dpr + ctx.measureText(text).width;
+      if (x1 <= w && !(head >= x(t) + dpr && head <= x1 + 2 * dpr)) ctx.fillText(text, x(t) + 3 * dpr, 18 * dpr);
     }
     let no = 0;
     for (const l of lines) {
@@ -328,18 +399,79 @@ function Waveform({ peaks, timeMs, lines, onSeek }) {
       ctx.fillRect(x(l.timeMs), 22 * dpr, dpr, h);
       if (displayText(l.text)) ctx.fillText(String(no), x(l.timeMs) + 3 * dpr, h - 4 * dpr);
     }
-    ctx.fillStyle = cssVar("--lyrics-accent", "#2a7ae2");
-    ctx.fillRect(x(timeMs) - dpr, 0, 2 * dpr, h);
+    ctx.font = font(11, "bold");
+    secs.forEach((s, k) => {
+      const x0 = clampX(s.startMs);
+      const x1 = clampX(s.endMs);
+      if (!s.label || x1 - x0 < 12 * dpr) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x0, 0, x1 - x0 - 2 * dpr, h);
+      ctx.clip();
+      ctx.fillStyle = `hsl(${HUES[k % HUES.length]} 70% 32%)`;
+      ctx.fillRect(x0 + 3 * dpr, 24 * dpr, ctx.measureText(s.label).width + 8 * dpr, 16 * dpr);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(s.label, x0 + 7 * dpr, 36 * dpr);
+      ctx.restore();
+    });
+    ctx.fillStyle = cssVar("--lyrics-bg", "#fff");
+    ctx.fillRect(head - 2 * dpr, 0, 4 * dpr, h);
+    ctx.fillStyle = accent;
+    ctx.fillRect(head - dpr, 0, 2 * dpr, h);
+    if (dragMs !== null) {
+      const text = formatTime(Math.round(centre / 10) * 10);
+      const bw = ctx.measureText(text).width + 10 * dpr;
+      const bx = Math.min(w - bw, Math.max(0, head - bw / 2));
+      ctx.fillRect(bx, 0, bw, 20 * dpr);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(text, bx + 5 * dpr, 15 * dpr);
+    }
   });
-  const click = (e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    if (r.width) onSeek(Math.max(0, Math.round(start + (e.clientX - r.left) / r.width * span)));
+  const at = (e) => e.currentTarget.getBoundingClientRect();
+  const down = (e) => {
+    var _a, _b;
+    if (e.button !== 0) return;
+    (_b = (_a = e.currentTarget).setPointerCapture) == null ? void 0 : _b.call(_a, e.pointerId);
+    press.current = { x: e.clientX, t: timeMs, moved: false };
+  };
+  const move = (e) => {
+    const p = press.current;
+    const r = at(e);
+    if (!p || !r.width) return;
+    const dx = e.clientX - p.x;
+    if (Math.abs(dx) >= DRAG_PX) p.moved = true;
+    if (p.moved) setDragMs(Math.max(0, Math.round(p.t - dx / r.width * span)));
+  };
+  const up = (e) => {
+    const p = press.current;
+    const r = at(e);
+    press.current = null;
+    setDragMs(null);
+    if (!p || !r.width) return;
+    const dx = e.clientX - p.x;
+    if (p.moved || Math.abs(dx) >= DRAG_PX) onSeek(Math.max(0, Math.round(p.t - dx / r.width * span)));
+    else onSeek(Math.max(0, Math.round(start + (e.clientX - r.left) / r.width * span)));
+  };
+  const cancel = () => {
+    press.current = null;
+    setDragMs(null);
   };
   return /* @__PURE__ */ jsxs("div", { className: "lyrics-wave", children: [
-    /* @__PURE__ */ jsx("canvas", { ref, onClick: click, "aria-label": "Waveform: click to seek", title: "Click to seek" }),
+    /* @__PURE__ */ jsx(
+      "canvas",
+      {
+        ref,
+        onPointerDown: down,
+        onPointerMove: move,
+        onPointerUp: up,
+        onPointerCancel: cancel,
+        "aria-label": "Waveform: tap to jump to a spot, or drag sideways to scrub",
+        title: "Click to jump there, or drag sideways to scrub"
+      }
+    ),
     /* @__PURE__ */ jsxs("div", { className: "lyrics-wave-zoom", children: [
-      /* @__PURE__ */ jsx("button", { type: "button", onClick: () => setSpan((s) => clampSpan(s / 2)), children: "Zoom in" }),
-      /* @__PURE__ */ jsx("button", { type: "button", onClick: () => setSpan((s) => clampSpan(s * 2)), children: "Zoom out" })
+      /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "Zoom in", title: "Zoom in", onClick: () => setSpan((s) => clampSpan(s / 2)), children: "+" }),
+      /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "Zoom out", title: "Zoom out", onClick: () => setSpan((s) => clampSpan(s * 2)), children: "−" })
     ] })
   ] });
 }
@@ -356,6 +488,7 @@ function LyricsEditor(p) {
   return p.onChange ? /* @__PURE__ */ jsx(Editor, { ...p }) : /* @__PURE__ */ jsx(LyricsView, { ...p });
 }
 function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
+  var _a;
   const [s, dispatch] = useReducer(reducer, lrc, (l) => initState(parseLrc(l)));
   const { audibleMs, seek } = usePlaybackTime(position, offsetMs, onSeek);
   const seekRef = useRef(seek);
@@ -364,11 +497,11 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   const cb = useRef(onChange);
   cb.current = onChange;
   const emit = (doc) => {
-    var _a;
+    var _a2;
     const out = serializeLrc(doc);
     if (out === last.current) return;
     last.current = out;
-    (_a = cb.current) == null ? void 0 : _a.call(cb, out);
+    (_a2 = cb.current) == null ? void 0 : _a2.call(cb, out);
   };
   useEffect(() => {
     if (lrc === last.current) return;
@@ -391,6 +524,15 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     },
     []
   );
+  const caretFromEnd = useRef(null);
+  const textRef = useRef(null);
+  useLayoutEffect(() => {
+    const ta = textRef.current;
+    if (caretFromEnd.current === null || !ta) return;
+    const at = ta.value.length - caretFromEnd.current;
+    ta.setSelectionRange(at, at);
+    caretFromEnd.current = null;
+  }, [s.pasted]);
   const lines = s.doc.lines;
   const line = lines[s.sel];
   const ws = words(line);
@@ -444,11 +586,13 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   }, []);
   const list = useRef(null);
   useEffect(() => {
-    var _a, _b, _c;
-    (_c = (_b = (_a = list.current) == null ? void 0 : _a.querySelector("[aria-current]")) == null ? void 0 : _b.scrollIntoView) == null ? void 0 : _c.call(_b, { block: "nearest" });
+    var _a2, _b, _c;
+    (_c = (_b = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]")) == null ? void 0 : _b.scrollIntoView) == null ? void 0 : _c.call(_b, { block: "nearest" });
   }, [s.sel, s.step, lines]);
   const dur = position.durationMs;
   const rows = useMemo(() => {
+    const band = new Array(lines.length);
+    sections(lines).forEach((sec, k) => band.fill(k, sec.from, sec.to));
     let no = 0;
     return lines.map((l, i) => {
       const text = displayText(l.text);
@@ -456,28 +600,38 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
       if (text) no++;
       const sel = i === s.sel;
       const late = dur > 0 && l.timeMs !== null && l.timeMs > dur;
-      return /* @__PURE__ */ jsxs("li", { className: "lyrics-editor-row", "aria-current": sel || void 0, "data-late": late || void 0, children: [
-        /* @__PURE__ */ jsxs(
-          "button",
-          {
-            type: "button",
-            className: "lyrics-editor-line",
-            onClick: () => {
-              dispatch({ t: "select", i });
-              preRollRef.current(i);
-            },
-            children: [
-              /* @__PURE__ */ jsx("span", { className: "lyrics-editor-no", children: text ? no : "♪" }),
-              /* @__PURE__ */ jsx("span", { className: "lyrics-editor-time", title: late ? "After the end of the track" : void 0, children: l.timeMs === null ? "—" : formatTime(l.timeMs) }),
-              /* @__PURE__ */ jsxs("span", { className: "lyrics-editor-text", dir: "auto", children: [
-                text || "Instrumental break",
-                s.step === "words" && text && /* @__PURE__ */ jsx("small", { className: "lyrics-editor-badge", children: timedWords(l) === words(l).length ? "words ✓" : `${timedWords(l)}/${words(l).length} words` })
-              ] })
-            ]
-          }
-        ),
-        sel && (s.step === "words" ? /* @__PURE__ */ jsx(WordTools, { line: l, word: s.word, dispatch, seek: (t) => seekRef.current(t) }) : /* @__PURE__ */ jsx(LineTools, { line: l, dispatch, seek: (t) => seekRef.current(t), resume }))
-      ] }, i);
+      return /* @__PURE__ */ jsxs(
+        "li",
+        {
+          className: "lyrics-editor-row",
+          "aria-current": sel || void 0,
+          "data-late": late || void 0,
+          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i], 0.7) },
+          children: [
+            /* @__PURE__ */ jsxs(
+              "button",
+              {
+                type: "button",
+                className: "lyrics-editor-line",
+                onClick: () => {
+                  dispatch({ t: "select", i });
+                  preRollRef.current(i);
+                },
+                children: [
+                  /* @__PURE__ */ jsx("span", { className: "lyrics-editor-no", children: text ? no : "♪" }),
+                  /* @__PURE__ */ jsx("span", { className: "lyrics-editor-time", title: late ? "After the end of the track" : void 0, children: l.timeMs === null ? "—" : formatTime(l.timeMs) }),
+                  /* @__PURE__ */ jsxs("span", { className: "lyrics-editor-text", dir: "auto", children: [
+                    text || "Instrumental break",
+                    s.step === "words" && text && /* @__PURE__ */ jsx("small", { className: "lyrics-editor-badge", children: timedWords(l) === words(l).length ? "words ✓" : `${timedWords(l)}/${words(l).length} words` })
+                  ] })
+                ]
+              }
+            ),
+            sel && (s.step === "words" ? /* @__PURE__ */ jsx(WordTools, { line: l, word: s.word, dispatch, seek: (t) => seekRef.current(t) }) : /* @__PURE__ */ jsx(LineTools, { line: l, dispatch, seek: (t) => seekRef.current(t), resume }))
+          ]
+        },
+        i
+      );
     });
   }, [lines, s.sel, s.word, s.step, dur, resume == null ? void 0 : resume.i]);
   const undoRedo = /* @__PURE__ */ jsxs("span", { className: "lyrics-editor-undo", children: [
@@ -485,6 +639,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     /* @__PURE__ */ jsx("button", { type: "button", disabled: !s.future.length, onClick: () => dispatch({ t: "redo" }), children: "Redo" })
   ] });
   const synced = textLines.filter((l) => l.timeMs !== null).length;
+  const pasted = ((_a = s.pasted) == null ? void 0 : _a.doc) === s.doc ? s.pasted.n : 0;
   const allSynced = synced === textLines.length;
   let banner;
   if (!textLines.length) banner = /* @__PURE__ */ jsx(Fragment, { children: "No lyrics yet. Add them in step 1 first." });
@@ -505,24 +660,39 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     ] });
   const progress = !textLines.length ? "" : wordStep ? !ws.length ? `Line ${lineNo}` : s.word < ws.length ? `Line ${lineNo}: word ${s.word + 1} of ${ws.length}` : `Line ${lineNo}: all words timed ✓` : allSynced ? line ? `All ${textLines.length} lines synced ✓` : "" : `${synced} of ${textLines.length} lines synced`;
   return /* @__PURE__ */ jsxs("div", { className: "lyrics-editor", children: [
-    /* @__PURE__ */ jsx("div", { className: "lyrics-editor-tabs", role: "tablist", "aria-label": "Editor steps", children: STEPS.map(([id, name, note], k) => /* @__PURE__ */ jsxs(
-      "button",
-      {
-        type: "button",
-        role: "tab",
-        "aria-selected": s.step === id,
-        onClick: () => dispatch({ t: "step", step: id }),
-        children: [
-          /* @__PURE__ */ jsx("span", { className: "lyrics-editor-stepno", "aria-hidden": "true", children: k + 1 }),
-          " ",
-          name,
-          note && /* @__PURE__ */ jsx("small", { "aria-hidden": "true", children: note })
-        ]
-      },
-      id
-    )) }),
+    /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-head", children: [
+      /* @__PURE__ */ jsx("div", { className: "lyrics-editor-tabs", role: "tablist", "aria-label": "Editor steps", children: STEPS.map(([id, name, note], k) => /* @__PURE__ */ jsxs(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          "aria-selected": s.step === id,
+          onClick: () => dispatch({ t: "step", step: id }),
+          children: [
+            /* @__PURE__ */ jsx("span", { className: "lyrics-editor-stepno", "aria-hidden": "true", children: k + 1 }),
+            " ",
+            name,
+            note && /* @__PURE__ */ jsx("small", { "aria-hidden": "true", children: note })
+          ]
+        },
+        id
+      )) }),
+      s.step !== "lyrics" && /* @__PURE__ */ jsx(Waveform, { peaks, timeMs: audibleMs, lines, onSeek: seek, selected: s.sel })
+    ] }),
     s.step === "lyrics" ? /* @__PURE__ */ jsxs("div", { role: "tabpanel", "aria-label": "Lyrics", className: "lyrics-editor-panel", children: [
-      /* @__PURE__ */ jsx("p", { className: "lyrics-editor-banner", id: "lyrics-editor-howto", children: "Type or paste the lyrics — one line per row; blank line between verses." }),
+      pasted ? (
+        // Replaces the how-to: pasted time tags vanish from the box, so say where they went.
+        /* @__PURE__ */ jsxs("p", { className: "lyrics-editor-banner", "data-ok": true, role: "status", id: "lyrics-editor-howto", children: [
+          /* @__PURE__ */ jsxs("b", { children: [
+            "Kept the timing of ",
+            pasted,
+            " pasted line",
+            pasted === 1 ? "" : "s",
+            " ✓"
+          ] }),
+          " The pasted lyrics had timestamps; they're in the Sync lines step now, not in this box. Undo removes the paste."
+        ] })
+      ) : /* @__PURE__ */ jsx("p", { className: "lyrics-editor-banner", id: "lyrics-editor-howto", children: "Type or paste the lyrics — one line per row; blank line between verses." }),
       /* @__PURE__ */ jsx(
         "textarea",
         {
@@ -533,11 +703,20 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           rows: Math.max(8, s.draft.split("\n").length + 1),
           value: s.draft,
           onChange: (e) => dispatch({ t: "draft", text: e.target.value }),
-          onBlur: () => dispatch({ t: "commit" })
+          onBlur: () => dispatch({ t: "commit" }),
+          ref: textRef,
+          onPaste: (e) => {
+            const doc = parseLrc(e.clipboardData.getData("text/plain"));
+            if (!doc.lines.some((l) => l.timeMs !== null)) return;
+            e.preventDefault();
+            const { selectionStart: start, selectionEnd: end } = e.currentTarget;
+            caretFromEnd.current = s.draft.length - end;
+            dispatch({ t: "paste", doc, start, end });
+          }
         }
       ),
       /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-dock", children: [
-        /* @__PURE__ */ jsx("p", { className: "lyrics-editor-progress", children: s.draft.trim() ? `${s.draft.split("\n").filter((r) => r.trim()).length} lines` : dur ? "Type or paste at least one line to continue." : "Load the song and add at least one line to continue." }),
+        /* @__PURE__ */ jsx("p", { className: "lyrics-editor-progress", children: s.draft.trim() ? `${s.draft.split("\n").filter((r) => r.trim()).length} lines${synced ? ` · ${synced} timed` : ""}` : dur ? "Type or paste at least one line to continue." : "Load the song and add at least one line to continue." }),
         undoRedo,
         /* @__PURE__ */ jsx(
           "button",
@@ -546,15 +725,14 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
             className: "lyrics-editor-primary",
             disabled: !s.draft.trim(),
             onClick: () => dispatch({ t: "step", step: "lines" }),
-            children: "Next: sync to the music →"
+            children: synced ? "Next: check the timing →" : "Next: sync to the music →"
           }
         )
       ] })
     ] }) : /* @__PURE__ */ jsxs("div", { role: "tabpanel", "aria-label": wordStep ? "Sync words" : "Sync lines", className: "lyrics-editor-panel", children: [
       /* @__PURE__ */ jsx("p", { className: "lyrics-editor-banner", children: banner }),
-      /* @__PURE__ */ jsx(Waveform, { peaks, timeMs: audibleMs, lines, onSeek: seek }),
       /* @__PURE__ */ jsxs("p", { className: "lyrics-editor-tip", children: [
-        wordStep ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line to time its words (it rewinds to just before the line).` : "Tap any line to fix its time (it rewinds to just before the line).",
+        wordStep ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line to time its words (it rewinds to just before the line). Drag the waveform sideways to scrub.` : "Tap any line to fix its time (it rewinds to just before the line). Drag the waveform sideways to scrub. For precise timing, set the playback speed to 0.5×.",
         /* @__PURE__ */ jsx("span", { className: "lyrics-editor-hint", children: " Keys: S or Enter = Stamp · ↑/↓ = choose line · Ctrl/⌘+Z = undo" })
       ] }),
       textLines.length ? /* @__PURE__ */ jsx("ol", { ref: list, className: "lyrics-editor-lines", children: rows }) : /* @__PURE__ */ jsx("button", { type: "button", className: "lyrics-editor-primary", onClick: () => dispatch({ t: "step", step: "lyrics" }), children: "← Add lyrics" }),
@@ -562,6 +740,11 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
         /* @__PURE__ */ jsxs("p", { className: "lyrics-editor-progress", children: [
           /* @__PURE__ */ jsx("span", { className: "lyrics-editor-now", "aria-label": "Playback position", children: formatTime(audibleMs) }),
           !position.playing && /* @__PURE__ */ jsx("b", { children: " · paused" }),
+          (position.rate ?? 1) !== 1 && /* @__PURE__ */ jsxs("b", { children: [
+            " · ",
+            position.rate,
+            "× speed"
+          ] }),
           clash ? /* @__PURE__ */ jsxs("b", { className: "lyrics-editor-warn", children: [
             " · ⚠ the playhead is ",
             clash,

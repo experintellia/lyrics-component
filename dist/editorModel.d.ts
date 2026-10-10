@@ -7,6 +7,11 @@ export type Action = {
     t: 'draft';
     text: string;
 } | {
+    t: 'paste';
+    doc: LrcDoc;
+    start: number;
+    end: number;
+} | {
     t: 'commit';
 } | {
     t: 'step';
@@ -47,6 +52,10 @@ export interface State {
     word: number;
     draft: string;
     emit: boolean;
+    pasted?: {
+        n: number;
+        doc: LrcDoc;
+    };
 }
 export declare const hasText: (l: LrcLine | undefined) => boolean;
 export declare const docText: (doc: LrcDoc) => string;

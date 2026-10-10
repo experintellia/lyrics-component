@@ -1,5 +1,5 @@
 // Shared test fixtures, generated in memory (no binary fixtures in git).
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 // ponytail: no @types/node (no new deps), so Node's Buffer is untyped here. Playwright needs a real Buffer.
 declare const Buffer: any;
@@ -102,3 +102,13 @@ export async function loadAudio(page: Page, seconds = 5, musical = false) {
 
 export const loadLyrics = (page: Page, name: string, text: string) =>
   page.getByLabel('Lyrics file').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
+
+/** Paste `text` over everything in a textarea, as a real clipboard paste would (works in Chromium and WebKit). */
+export const pasteOver = (box: Locator, text: string) =>
+  box.evaluate((el: HTMLTextAreaElement, text) => {
+    el.focus();
+    el.select();
+    const data = new DataTransfer();
+    data.setData('text/plain', text);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
