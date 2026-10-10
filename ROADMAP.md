@@ -44,8 +44,9 @@ hook that drives it with requestAnimationFrame and `visibilitychange`.
 It rejects on decode failure; callers fall back to no peaks.
 
 `src/LyricsView.tsx` and `src/LyricsEditor.tsx` both take `LyricsProps`. Each component
-owns its own CSS file (`src/view.css`, `src/editor.css`). `src/index.ts` imports both, and
-the Vite lib build emits them as `dist/lyrics.css` (export `./style.css`).
+owns its own CSS file (`src/view.css`, `src/editor.css`). `src/styles.ts` imports both as a
+separate lib entry, and the Vite lib build emits them as `dist/lyrics.css` (export `./style.css`).
+`src/index.ts` has no CSS imports, so the published `.d.ts` stays free of them.
 
 `src/index.ts` exports everything above plus the types.
 
@@ -55,21 +56,21 @@ UTF-8 fatal, then a windows-1252 fallback).
 ## Steps
 
 1. **Core** (in parallel)
-   - [ ] 1a `lrc.ts` and tests for every LRC rule
-   - [ ] 1b `clock.ts` and tests for every timing rule
-   - [ ] 1c `peaks.ts` and `demo/decodeText.ts`, with tests
+   - [x] 1a `lrc.ts` and tests for every LRC rule
+   - [x] 1b `clock.ts` and tests for every timing rule
+   - [x] 1c `peaks.ts` and `demo/decodeText.ts`, with tests
 2. **Components** (in parallel, after 1)
-   - [ ] 2a `<LyricsView>` and `view.css`, with tests
-   - [ ] 2b `<LyricsEditor>`, the canvas waveform, and `editor.css`, with tests
+   - [x] 2a `<LyricsView>` and `view.css`, with tests
+   - [x] 2b `<LyricsEditor>`, the canvas waveform, and `editor.css`, with tests
 3. **App and delivery**
-   - [ ] Demo app: load audio and optionally `.lrc`/`.txt`; `<audio>` wired via `LyricsProps`;
+   - [x] Demo app: load audio and optionally `.lrc`/`.txt`; `<audio>` wired via `LyricsProps`;
          view/edit toggle; offset setting; export `.lrc`; `beforeunload` guard
-   - [ ] Playwright e2e on Chromium and WebKit (generate a WAV fixture in the test; don't
+   - [x] Playwright e2e on Chromium and WebKit (generate a WAV fixture in the test; don't
          commit binaries)
-   - [ ] GitHub Actions: typecheck, test, build, check `dist/` is up to date, e2e, deploy the
+   - [x] GitHub Actions: typecheck, test, build, check `dist/` is up to date, e2e, deploy the
          demo to Pages from main
-   - [ ] README: install as a pinned git dependency, host contract, CSS variables
-4. **Review**: check spec compliance and over-engineering, fix the findings, rebuild `dist/`.
+   - [x] README: install as a pinned git dependency, host contract, CSS variables
+4. [x] **Review**: check spec compliance and over-engineering, fix the findings, rebuild `dist/`.
 
 ## Release
 

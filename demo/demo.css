@@ -1,0 +1,41 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  --lyrics-accent: #2a7ae2;
+}
+body {
+  margin: 0 auto;
+  max-width: 48rem;
+  padding: 8px;
+}
+.demo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.demo-bar label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 44px;
+}
+.demo-bar input[type='file'] {
+  max-width: 14rem;
+}
+.demo-bar input[type='number'] {
+  width: 6em;
+  font: inherit;
+}
+.demo-bar button {
+  min-height: 44px;
+  font: inherit;
+}
+audio {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+}
+.demo-view {
+  height: 70dvh; /* LyricsView scrolls inside a host-sized box */
+}

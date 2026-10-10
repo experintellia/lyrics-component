@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from package.json "packageManager"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: dist/ is up to date (run pnpm build and commit dist/)
+        run: git diff --exit-code dist && test -z "$(git status --porcelain dist)"
+      - name: dist/ is consumable (strict types without skipLibCheck; ./lrc runs in plain Node)
+        run: |
+          printf "import { LyricsEditor, type LyricsProps } from '@experintellia/lyrics';\nimport { parseLrc } from '@experintellia/lyrics/lrc';\nexport const x: [typeof LyricsEditor, LyricsProps | null] = [LyricsEditor, null];\nparseLrc('');\n" > consumer.ts
+          pnpm exec tsc --ignoreConfig --noEmit --strict --module esnext --moduleResolution bundler --target es2022 --lib es2022,dom --types react consumer.ts
+          node -e "import('@experintellia/lyrics/lrc').then((m) => m.parseLrc('[00:01.00]x'))"
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm e2e # builds demo-dist/ (Playwright webServer)
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: demo-dist
+
+  pages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

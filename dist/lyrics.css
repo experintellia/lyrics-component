@@ -1,0 +1,181 @@
+/* Host maps --lyrics-* on any ancestor; defaults live in the var() fallbacks so they don't shadow it. */
+.lyrics-view {
+  position: relative; /* offsetParent for the auto-scroll math */
+  box-sizing: border-box;
+  height: 100%; /* the host sizes the box; it is the scroll container */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  padding: 8px;
+  background: var(--lyrics-bg, transparent);
+  color: var(--lyrics-fg, inherit);
+  font-size: max(12px, 1em);
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-view {
+    scroll-behavior: auto;
+  }
+}
+
+.lyrics-line {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 4px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.lyrics-line:empty {
+  min-height: 1.4em; /* stanza break in plain text (one line-height) */
+}
+
+/* unstamped labels like [Chorus] inside synced lyrics shouldn't look highlighted */
+.lyrics-view:has(button.lyrics-line) div.lyrics-line,
+button.lyrics-line {
+  color: var(--lyrics-muted, #767676);
+}
+
+button.lyrics-line {
+  min-height: 44px;
+  padding-block: 8px;
+  border-radius: var(--lyrics-radius, 8px);
+  cursor: pointer;
+}
+
+button.lyrics-line[aria-current] {
+  color: var(--lyrics-accent, currentColor);
+  font-weight: bold;
+}
+
+@media (hover: hover) {
+  button.lyrics-line:hover {
+    background: rgb(128 128 128 / 0.15);
+  }
+}
+.lyrics-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--lyrics-fg, inherit);
+  background: var(--lyrics-bg, transparent);
+  font-size: max(12px, 1em);
+}
+
+.lyrics-editor button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--lyrics-muted, #888);
+  border-radius: var(--lyrics-radius, 6px);
+  cursor: pointer;
+}
+
+.lyrics-editor button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .lyrics-editor button:not(:disabled):hover {
+    border-color: var(--lyrics-accent, #2a7ae2);
+  }
+}
+
+.lyrics-wave {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.lyrics-wave canvas {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  height: 96px;
+  cursor: pointer;
+}
+
+.lyrics-editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.lyrics-editor-now,
+.lyrics-editor-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics-editor-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lyrics-editor-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--lyrics-radius, 6px);
+}
+
+.lyrics-editor-row[aria-current] {
+  outline: 2px solid var(--lyrics-accent, #2a7ae2);
+}
+
+.lyrics-editor-row[data-late] .lyrics-editor-time {
+  text-decoration: line-through wavy;
+}
+
+.lyrics-editor-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--lyrics-muted, #888);
+  border-radius: var(--lyrics-radius, 6px);
+  scroll-margin-bottom: 80px; /* stamp-and-advance scrolls the next row clear of the sticky Stamp button */
+}
+
+/* iOS zooms the page when a focused input's font is < 16px, and stays zoomed. */
+@media (pointer: coarse) {
+  .lyrics-editor-row input {
+    font-size: max(16px, 1em);
+  }
+}
+
+.lyrics-editor-hint {
+  margin: 0;
+  font-size: max(12px, 0.85em);
+  color: var(--lyrics-muted, #888);
+}
+
+/* Big, thumb-reachable, stays on screen while the line list scrolls. */
+.lyrics-editor .lyrics-editor-stamp {
+  position: sticky;
+  bottom: 0;
+  min-height: 64px;
+  font-size: 1.25em;
+  font-weight: bold;
+  color: #fff; /* not --lyrics-bg: that may be transparent */
+  background: var(--lyrics-accent, #2a7ae2);
+  border-color: var(--lyrics-accent, #2a7ae2);
+  touch-action: manipulation;
+}
