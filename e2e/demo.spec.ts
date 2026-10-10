@@ -369,7 +369,8 @@ test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, 
   await page.getByRole('tab', { name: 'Lyrics', exact: true }).click();
   const box = page.getByLabel('Lyrics text');
   await box.click();
-  await page.keyboard.press('Control+End');
+  // Caret to the end by script: Ctrl+End isn't "end of text" on macOS.
+  await box.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(el.value.length, el.value.length));
   await page.keyboard.type('s ');
   await expect(box).toHaveValue(/Line 8s $/);
   expect(await paused(page)).toBe(true);
