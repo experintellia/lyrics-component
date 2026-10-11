@@ -16,7 +16,7 @@ Consumed as a git dependency pinned to a tag (the built `dist/` is committed):
 
 ```json
 "dependencies": {
-  "@experintellia/lyrics": "github:experintellia/lyrics-component#v0.1.0"
+  "@experintellia/lyrics": "github:experintellia/lyrics-component#v0.1.1"
 }
 ```
 

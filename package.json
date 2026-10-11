@@ -1,6 +1,6 @@
 {
   "name": "@experintellia/lyrics",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React lyrics display + sync editor (LRC). No fetching, no audio ownership.",
   "license": "MIT OR Apache-2.0",
   "type": "module",
