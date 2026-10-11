@@ -185,10 +185,14 @@ export function reducer(s: State, a: Action): State {
       return i === s.sel ? s : { ...s, sel: i, word: a.d > 0 ? 0 : Math.max(0, words(lines[i]).length - 1) };
     }
     case 'nudge': {
-      if (s.step !== 'words') return line?.timeMs != null ? put(setLineTime(line, Math.max(0, line.timeMs + a.d))) : s;
+      // A nudge that changes nothing (clamped at 0) is no undo step.
+      if (s.step !== 'words') {
+        const t = line?.timeMs ?? null;
+        return t === null || Math.max(0, t + a.d) === t ? s : put(setLineTime(line!, Math.max(0, t + a.d)));
+      }
       const ws = line ? lineWords(line.text) : [];
       const t = ws[s.word]?.text ? ws[s.word].timeMs : null;
-      if (t === null) return s;
+      if (t === null || Math.max(0, t + a.d) === t) return s;
       ws[s.word] = { ...ws[s.word], timeMs: Math.max(0, t + a.d) };
       return put({ timeMs: s.word === 0 ? ws[0].timeMs : line!.timeMs, text: joinWords(ws) }); // word 0's tag = line time
     }

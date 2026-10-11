@@ -144,6 +144,7 @@ summary {
   font-weight: bold;
 }
 .demo-tabs > button,
+.demo-more-panel button,
 .demo-cta button,
 .demo-play {
   min-height: 44px;
@@ -154,7 +155,8 @@ summary {
   background: transparent;
   cursor: pointer;
 }
-.demo-tabs > button:disabled {
+.demo-tabs > button:disabled,
+.demo-more-panel button:disabled {
   border-color: #888;
   color: #767676;
   cursor: default;
@@ -222,6 +224,28 @@ summary {
 .demo-more small {
   display: block;
 }
+.demo-drafts {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.demo-drafts li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+.demo-drafts span {
+  flex: 1;
+}
+.demo-drafts button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
 
 .demo-view {
   flex: 1 1 0; /* LyricsView scrolls inside a host-sized box: here, everything down to the player */
@@ -257,6 +281,17 @@ summary {
 }
 .demo-cta button {
   min-height: 52px;
+}
+.demo-actions {
+  display: flex;
+  gap: 8px;
+}
+.demo-actions button {
+  flex: 1;
+}
+.demo-cta button + button {
+  color: var(--lyrics-accent);
+  background: transparent;
 }
 .demo-empty {
   color: #767676;

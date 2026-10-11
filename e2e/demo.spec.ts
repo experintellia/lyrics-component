@@ -11,9 +11,9 @@ async function load(page: Page) {
   await expect(page.locator('.lyrics-line')).toHaveText(['First line', 'Second line', 'Third line']);
 }
 
-async function downloadText(page: Page) {
+async function downloadText(page: Page, button = 'Download .lrc') {
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: /Download/ }).click();
+  await page.getByRole('button', { name: button }).click();
   const file = await download;
   let text = '';
   for await (const chunk of await file.createReadStream()) text += chunk;
@@ -32,7 +32,7 @@ test('empty state: audio and optional lyrics pickers; type lyrics, then Next goe
   await expect(page.locator('.lyrics-editor-text')).toHaveText(['One', 'Two', 'Three']);
   await expect(page.getByText('0 of 3 lines synced')).toBeVisible();
   await expect(page.locator('.demo-file label').nth(1)).toContainText('3 typed lines'); // no "no file chosen" contradiction
-  await expect(page.getByRole('button', { name: /Download/ })).toBeDisabled(); // nothing synced yet
+  await expect(page.getByRole('button', { name: 'Download .lrc' })).toBeDisabled(); // nothing synced yet
 });
 
 test('view highlights the current line and click seeks the audio', async ({ page }) => {
@@ -73,7 +73,7 @@ test('full flow: plain text → sync every line → sync words → preview highl
   await page.getByRole('button', { name: '❚❚ Pause' }).click();
   await expect(page.getByRole('status')).toContainText('All 4 lines synced ✓'); // done card replaces Stamp
   await expect(stamp).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Download/ })).toHaveAttribute('data-primary', 'true'); // done: download is the next step
+  await expect(page.getByRole('button', { name: 'Download .lrc' })).toHaveAttribute('data-primary', 'true'); // done: download is the next step
   await expect(page.locator('.lyrics-editor-time', { hasText: '—' })).toHaveCount(0);
 
   // Word timing on line 2 (paused; seek, then stamp each word).
@@ -105,6 +105,37 @@ test('full flow: plain text → sync every line → sync words → preview highl
   expect(text).toMatch(/^\[00:01\.50\]<00:01\.50>Second <00:01\.70>line <00:01\.90>here\n\n\[/m); // stanza break kept
 });
 
+test('TTML export: sync a line and its words, download .ttml with <p> and <span> timing', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'song.txt', 'Carry me home\nGoodbye\n');
+  const stamp = page.getByRole('button', { name: /^(Re-s|S)tamp/ });
+  for (const t of [0.5, 2]) {
+    await seek(page, t);
+    await expect(page.getByLabel('Playback position')).toHaveText(`00:0${t.toFixed(2)}`);
+    await stamp.click();
+  }
+  await page.getByRole('tab', { name: 'Sync words' }).click();
+  await page.getByRole('button', { name: /Carry me home/ }).click();
+  for (const [t, w] of [[1, 'me'], [1.5, 'home']] as const) {
+    await seek(page, t);
+    await expect(page.getByLabel('Playback position')).toHaveText(`00:0${t.toFixed(2)}`);
+    await expect(stamp).toHaveText(`Stamp “${w}”`);
+    await stamp.click();
+  }
+  await expect(page.getByText('1 of 2 lines have word timing')).toBeVisible();
+
+  await page.getByTitle('Settings').click(); // TTML export sits in the ⚙ panel
+  const { name, text } = await downloadText(page, 'Download .ttml');
+  expect(name).toBe('song.ttml');
+  expect(text).toContain('itunes:timing="Word"');
+  expect(text.match(/<p .*<\/p>/g)).toEqual([
+    '<p begin="00:00:00.500" end="00:00:02.000"><span begin="00:00:00.500" end="00:00:01.000">Carry</span> ' +
+      '<span begin="00:00:01.000" end="00:00:01.500">me</span> <span begin="00:00:01.500" end="00:00:02.000">home</span></p>',
+    '<p begin="00:00:02.000" end="00:00:05.000">Goodbye</p>', // last line ends at the audio's duration
+  ]);
+});
+
 test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth scroll under reduced motion', async ({ page }) => {
   await load(page);
   const line = page.locator('.lyrics-line').first();
@@ -126,6 +157,7 @@ test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth sc
   expect(unscoped).toEqual([]);
 
   await page.getByRole('tab', { name: 'Edit' }).click();
+  await page.getByTitle('Settings').click(); // its panel's buttons too
   for (const el of await page.locator('.lyrics-editor button, .demo-tabs button, .demo-tabs summary, .demo-transport button').all()) {
     const box = (await el.boundingBox())!;
     expect(Math.min(box.width, box.height), await el.evaluate((e) => e.outerHTML)).toBeGreaterThanOrEqual(44);
@@ -161,7 +193,7 @@ test('S stamps while a tab button has focus; unsaved edits trigger the beforeunl
   await page.getByRole('tab', { name: 'Edit' }).focus();
   await page.keyboard.press('s');
   await expect(page.locator('.lyrics-editor-time').first()).toHaveText('00:00.00');
-  await expect(page.getByRole('button', { name: /Download/ })).toContainText('unsaved changes'); // dirty
+  await expect(page.getByRole('button', { name: 'Download .lrc' })).toContainText('unsaved changes'); // dirty
 
   const dialog = new Promise<string>((resolve) => page.once('dialog', (d) => (resolve(d.type()), d.dismiss())));
   await page.close({ runBeforeUnload: true });
@@ -276,6 +308,22 @@ test('pasting LRC into the Lyrics box keeps its timing and says so', async ({ pa
   await expect(page.locator('.lyrics-editor-time')).toHaveText(['00:00.50', '00:02.00', '00:03.50']);
 });
 
+test('transcribing: ↺ 5 s seeks the audio back and the caret stays in the Lyrics box', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page, 10);
+  await seek(page, 8);
+  const box = page.getByLabel('Lyrics text');
+  await box.fill('First line');
+  await expect(page.getByLabel('Seek')).toHaveValue('8000'); // the seek reached the editor's position
+  await page.getByRole('button', { name: 'Back 5 s' }).click();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(3, 1);
+  await expect(box).toBeFocused();
+  await page.keyboard.type('!');
+  await expect(box).toHaveValue('First line!');
+  await page.getByLabel('Playback speed').selectOption('0.5'); // 5 s of listening = 2.5 s of song
+  await expect(page.getByRole('button', { name: 'Back 2.5 s' })).toHaveText('↺ 2.5 s');
+});
+
 const mute = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => (a.muted = true)); // headless WebKit won't play unmuted
 const paused = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused);
 
@@ -317,7 +365,7 @@ test('word step: a timed word chip seeks to its stamp; Loop line jumps back to t
   await page.locator('.demo-play').click();
 });
 
-test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, Space; Tab then Enter presses; select and textarea keep keys', async ({ page, browserName }) => {
+test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, ←/→, Space; Tab then Enter presses; select and textarea keep keys', async ({ page, browserName }) => {
   await page.goto('/');
   await loadAudio(page);
   await loadLyrics(page, 'l.txt', Array.from({ length: 8 }, (_, i) => `Line ${i + 1}`).join('\n'));
@@ -377,6 +425,16 @@ test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, 
   await expect(time).toHaveText(before!);
   await expect(stamped).toHaveCount(n);
 
+  // ←/→ nudge 10 ms, Shift 100 ms, even on the clicked slider (which doesn't move).
+  await page.getByLabel('Seek').click();
+  const t = await audioTime(page);
+  await page.keyboard.press('ArrowRight');
+  await expect(time).not.toHaveText(before!);
+  for (let k = 0; k < 9; k++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect(time).toHaveText(before!);
+  expect(await audioTime(page)).toBeCloseTo(t, 2);
+
   // Typing in the Lyrics box types.
   await page.getByRole('tab', { name: 'Lyrics', exact: true }).click();
   const box = page.getByLabel('Lyrics text');
@@ -412,4 +470,95 @@ test('preview karaoke: mid-word the active word is part-filled and the current l
   await seek(page, 2.5);
   await expect.poll(() => current.evaluate(scale)).toBe(1);
   await expect.poll(fill).toBeGreaterThan(0.3); // the fill still shows progress
+});
+
+test('drafts: edit, reload, Restore brings back the exact LRC; re-picking the audio attaches it; Discard removes it', async ({ page }) => {
+  const draft = () => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('lyrics-demo-drafts') ?? '{}')).map((d: any) => d.lrc));
+  const nudge = async () => {
+    await page.getByRole('tab', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: /First line/ }).click();
+    await page.getByRole('button', { name: '+0.1 s' }).click();
+  };
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'w.lrc', '[ti:Tone]\n[00:00.50]First line\n[00:02.00]<00:02.00>Second <00:02.60>line\n[00:03.50]Third line\n');
+  expect(await draft()).toEqual([]); // loaded, unchanged: nothing to save
+  await nudge();
+  await expect.poll(draft).toEqual([expect.stringContaining('[00:00.60]First line')]);
+  const [saved] = await draft();
+  expect(saved).toContain('<00:02.00>Second <00:02.60>line');
+  await page.getByTitle('Settings').click();
+  await expect(page.locator('.demo-drafts span')).toHaveText(['song.wav · just now']);
+  await expect(page.getByRole('button', { name: 'Delete draft: song.wav' })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText('Restore your lyrics for song.wav (edited just now)?')).toBeVisible();
+  await page.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect(page.getByText('Choose song.wav again')).toBeVisible();
+  await expect(page.locator('.lyrics-line')).toHaveText(['First line', 'Second line', 'Third line']);
+  await loadAudio(page); // same file: attaches, no second prompt
+  await expect(page.getByText('Choose song.wav again')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
+  const { text } = await downloadText(page);
+  expect(text).toBe(saved); // exact, stamps and word tags included
+  expect(await draft()).toEqual([]); // downloaded: cleared
+
+  await nudge();
+  await expect.poll(draft).toHaveLength(1);
+  await page.reload();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
+  expect(await draft()).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
+});
+
+test('drafts: the prompt replaces the editor until answered; re-picking a known audio file offers its draft', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await page.getByLabel('Lyrics text').fill('One\nTwo');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lyrics-demo-drafts'))).toContain('One\\nTwo');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Lyrics text')).toHaveCount(0); // no edits that autosave couldn't keep
+  await loadAudio(page); // the song's draft is offered for the picked file too
+  await page.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect(page.getByText('Choose song.wav again')).toHaveCount(0); // already attached
+  await page.getByRole('tab', { name: 'Lyrics', exact: true }).click();
+  await expect(page.getByLabel('Lyrics text')).toHaveValue('One\nTwo');
+});
+
+test('drafts: lyrics typed before audio move to it; two tabs keep each other\'s drafts; Settings restores any; bad storage fails softly', async ({ page, context }) => {
+  const drafts = () =>
+    page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('lyrics-demo-drafts') ?? '{}')).map((d: any) => `${d.name}: ${d.lrc.trim()}`).sort());
+  const other = await context.newPage();
+  await other.goto('/');
+  await page.goto('/');
+  await page.getByLabel('Lyrics text').fill('One\nTwo');
+  await expect.poll(drafts).toEqual([': One\nTwo']);
+  await loadAudio(page);
+  await expect.poll(drafts).toEqual(['song.wav: One\nTwo']); // moved, not copied
+  await other.getByLabel('Lyrics text').fill('Three');
+  await expect.poll(drafts).toEqual([': Three', 'song.wav: One\nTwo']); // the other tab didn't clobber it
+
+  await other.getByTitle('Settings').click();
+  await other.getByRole('button', { name: 'Restore draft: song.wav' }).click();
+  await expect(other.getByText('Choose song.wav again')).toBeVisible();
+  await other.getByRole('tab', { name: 'Lyrics', exact: true }).click();
+  await expect(other.getByLabel('Lyrics text')).toHaveValue('One\nTwo');
+
+  await page.evaluate(() => localStorage.setItem('lyrics-demo-drafts', 'null'));
+  await page.reload();
+  await expect(page.getByLabel('Lyrics text')).toBeVisible();
+
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException('quota', 'QuotaExceededError'); // old iOS private mode
+    };
+  });
+  await page.reload();
+  await loadAudio(page);
+  await page.getByLabel('Lyrics text').fill('Still works');
+  await expect(page.getByText("This browser won't save drafts")).toBeVisible();
+  await expect(page.getByLabel('Lyrics text')).toHaveValue('Still works');
 });
