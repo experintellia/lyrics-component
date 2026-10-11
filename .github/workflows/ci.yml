@@ -23,11 +23,11 @@ jobs:
       - run: pnpm build
       - name: dist/ is up to date (run pnpm build and commit dist/)
         run: git diff --exit-code dist && test -z "$(git status --porcelain dist)"
-      - name: dist/ is consumable (strict types without skipLibCheck; ./lrc runs in plain Node)
+      - name: dist/ is consumable (strict types without skipLibCheck; ./lrc and ./ttml run in plain Node)
         run: |
-          printf "import { LyricsEditor, type LyricsProps } from '@experintellia/lyrics';\nimport { parseLrc } from '@experintellia/lyrics/lrc';\nexport const x: [typeof LyricsEditor, LyricsProps | null] = [LyricsEditor, null];\nparseLrc('');\n" > consumer.ts
+          printf "import { LyricsEditor, type LyricsProps } from '@experintellia/lyrics';\nimport { parseLrc } from '@experintellia/lyrics/lrc';\nimport { serializeTtml } from '@experintellia/lyrics/ttml';\nexport const x: [typeof LyricsEditor, LyricsProps | null] = [LyricsEditor, null];\nserializeTtml(parseLrc('[00:01.00]x'));\n" > consumer.ts
           pnpm exec tsc --ignoreConfig --noEmit --strict --module esnext --moduleResolution bundler --target es2022 --lib es2022,dom --types react consumer.ts
-          node -e "import('@experintellia/lyrics/lrc').then((m) => m.parseLrc('[00:01.00]x'))"
+          node -e "Promise.all([import('@experintellia/lyrics/lrc'), import('@experintellia/lyrics/ttml')]).then(([l, t]) => t.serializeTtml(l.parseLrc('[00:01.00]x')))"
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm e2e # builds demo-dist/ (Playwright webServer)
       - run: pnpm screenshots # key UI states at phone and desktop size, for human review
