@@ -407,12 +407,27 @@ summary {
 }
 /* Short screens (iPhone SE/mini with Safari's bars): the Preview/Edit bar scrolls away instead of sticking, so the
    editor's tabs stick to the top and the line list gets its 61px. Relative, not static: z-index keeps it (and its
-   dropdowns) above the editor. ponytail: phones in landscape (~320px) stay cramped; they'd need the head to shrink. */
+   dropdowns) above the editor. Phones in landscape: see the max-height 450px rules. */
 @media (max-height: 640px) {
   :root {
     --lyrics-sticky-top: 0px;
   }
   .demo-tabs {
     position: relative;
+  }
+}
+/* Phones in landscape: a slimmer transport, and rows scroll clear of the editor's one-row dock above it. */
+@media (max-height: 450px) {
+  :root {
+    --demo-transport-h: calc(52px + env(safe-area-inset-bottom, 0px));
+  }
+  .demo-transport {
+    padding-block: 4px calc(4px + env(safe-area-inset-bottom, 0px));
+  }
+  .demo-play {
+    min-height: 44px;
+  }
+  #root:has(.demo-transport:not([hidden])) .lyrics-editor-row {
+    scroll-margin-bottom: calc(76px + var(--demo-transport-h));
   }
 }

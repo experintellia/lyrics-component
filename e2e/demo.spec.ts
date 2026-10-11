@@ -282,7 +282,8 @@ test('S stamps while a tab button has focus; unsaved edits trigger the beforeunl
 });
 
 // 700 px: a typical phone. 555 px: iPhone SE in Safari, where the Preview/Edit bar scrolls away (≤ 640 px).
-for (const [width, height] of [[390, 700], [375, 555]])
+// 667×325: the SE in landscape (≤ 450 px), where the step tabs scroll away too and only the waveform stays.
+for (const [width, height] of [[390, 700], [375, 555], [667, 325]])
 test(`tap-along on a ${width}×${height} phone: the selected line stays clear of the Stamp bar, and Stamp of the pinned audio`, async ({ page }) => {
   await page.setViewportSize({ width, height });
   await page.goto('/');
@@ -300,11 +301,15 @@ test(`tap-along on a ${width}×${height} phone: the selected line stays clear of
     expect(row.y + row.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(dock.y);
     const btn = (await stamp.boundingBox())!;
     expect(btn.y + btn.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(transport.y);
-    // Step tabs stick right under the Preview/Edit bar (short screen: at the top, the bar scrolled away). From
-    // stamp 3 on, the list has scrolled the page past the file pickers.
+    // Step tabs stick right under the Preview/Edit bar (short screen: at the top, the bar scrolled away; landscape:
+    // the waveform at the top). From stamp 3 on, the list has scrolled the page past the file pickers.
     const nav = (await page.locator('.demo-tabs').boundingBox())!;
     const tabs = (await page.locator('.lyrics-editor-tabs').boundingBox())!;
-    if (i >= 2) expect(Math.abs(tabs.y - (height > 640 ? nav.y + nav.height : 0)), `after stamp ${i + 1}`).toBeLessThan(2);
+    const wave = (await page.locator('.lyrics-wave').boundingBox())!;
+    if (i >= 2) {
+      const pinned = height <= 450 ? wave.y : tabs.y - (height > 640 ? nav.y + nav.height : 0);
+      expect(Math.abs(pinned), `after stamp ${i + 1}`).toBeLessThan(2);
+    }
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); // no sideways scroll
 });
@@ -321,6 +326,23 @@ test('↑ back to line 1: the selected line is scrolled clear of the sticky head
     const head = (await page.locator('.lyrics-editor-head').boundingBox())!;
     expect(sel.y, `line ${i}`).toBeGreaterThanOrEqual(head.y + head.height);
   }
+});
+
+test('landscape: a selected row too tall for the space between waveform and dock shows its top', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 325 });
+  await page.goto('/');
+  await loadAudio(page);
+  const long = "Ain't no fun without the bros, so give it up and let the whole crowd sing along tonight"; // wraps
+  await loadLyrics(page, 'l.txt', ['One', 'Two', long, ...Array.from({ length: 12 }, (_, i) => `Line ${i + 4}`)].join('\n'));
+  const stamp = page.getByRole('button', { name: /^(Re-s|S)tamp/ });
+  for (let i = 0; i < 3; i++) await stamp.click();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowDown'); // down onto the long stamped line: with its tools it's taller than fits
+  await expect(page.locator('.lyrics-editor-row[aria-current]')).toContainText(long);
+  const row = (await page.locator('.lyrics-editor-row[aria-current]').boundingBox())!;
+  const head = (await page.locator('.lyrics-editor-head').boundingBox())!;
+  expect(row.y).toBeGreaterThanOrEqual(head.y + head.height + 16); // clear of the waveform and its fade
 });
 
 test('waveform: drag left scrubs forward and seeks once on release; a tap still seeks', async ({ page }) => {

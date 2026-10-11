@@ -672,3 +672,43 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
   margin: 0;
   accent-color: var(--lyrics-accent, #2a7ae2);
 }
+
+/* Phones in landscape (~320–380px tall): only the waveform stays pinned (the step tabs scroll away above the top
+   edge), it gets shorter with the zoom buttons beside it, and the dock is one row (status, Undo/Redo, Stamp).
+   ponytail: the head's top offset assumes one-line 44px tabs (+1px border, +8px gap); a host font that wraps the
+   tab labels leaves a sliver of them showing. */
+@media (max-height: 450px) {
+  .lyrics-editor-head {
+    top: calc(var(--lyrics-sticky-top, 0px) - 53px);
+  }
+  .lyrics-editor-tabs small {
+    display: inline;
+    margin-inline-start: 4px;
+  }
+  /* A step tab reached with the keyboard brings the tabs back down. */
+  .lyrics-editor-head:has(.lyrics-editor-tabs :focus-visible) {
+    top: var(--lyrics-sticky-top, 0px);
+  }
+  .lyrics-wave canvas {
+    height: 48px;
+  }
+  .lyrics-wave-zoom {
+    flex-direction: row;
+  }
+  .lyrics-editor-row {
+    /* the measured head minus the tabs hidden above the top edge, as above */
+    scroll-margin: calc(var(--lyrics-sticky-top, 0px) + var(--lyrics-head-h, 105px) - 53px + 20px) 0
+      calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+  .lyrics-editor-progress {
+    flex: 1 1 12em;
+  }
+  .lyrics-editor .lyrics-editor-stamp {
+    flex: 1 1 10em;
+    min-height: 44px;
+    font-size: 1.1em;
+  }
+  .lyrics-editor-dock .lyrics-editor-primary {
+    min-height: 44px;
+  }
+}
