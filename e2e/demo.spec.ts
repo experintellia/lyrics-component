@@ -343,7 +343,7 @@ test('word step: a timed word chip seeks to its stamp; Loop line jumps back to t
   await page.locator('.demo-play').click();
 });
 
-test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, Space; Tab then Enter presses; select and textarea keep keys', async ({ page, browserName }) => {
+test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, ←/→, Space; Tab then Enter presses; select and textarea keep keys', async ({ page, browserName }) => {
   await page.goto('/');
   await loadAudio(page);
   await loadLyrics(page, 'l.txt', Array.from({ length: 8 }, (_, i) => `Line ${i + 1}`).join('\n'));
@@ -402,6 +402,16 @@ test('shortcuts: a clicked button or slider does not swallow S, Enter, ↑/↓, 
   await page.keyboard.press('Enter');
   await expect(time).toHaveText(before!);
   await expect(stamped).toHaveCount(n);
+
+  // ←/→ nudge 10 ms, Shift 100 ms, even on the clicked slider (which doesn't move).
+  await page.getByLabel('Seek').click();
+  const t = await audioTime(page);
+  await page.keyboard.press('ArrowRight');
+  await expect(time).not.toHaveText(before!);
+  for (let k = 0; k < 9; k++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect(time).toHaveText(before!);
+  expect(await audioTime(page)).toBeCloseTo(t, 2);
 
   // Typing in the Lyrics box types.
   await page.getByRole('tab', { name: 'Lyrics', exact: true }).click();

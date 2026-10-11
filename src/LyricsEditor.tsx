@@ -157,6 +157,8 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     else if (s.step === 'lyrics' || mod || e.altKey) return;
     else if (k === 's' || k === 'enter') !e.repeat && stamp();
     else if (k === 'arrowup' || k === 'arrowdown') dispatch({ t: wordStep ? 'moveWord' : 'move', d: k === 'arrowup' ? -1 : 1 });
+    // ←/→ nudge 10 ms, Shift 100 ms. Wins over a clicked slider's native ←/→, as ↑/↓ already do.
+    else if (k === 'arrowleft' || k === 'arrowright') dispatch({ t: 'nudge', d: (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 100 : 10) });
     else return;
     e.preventDefault();
   };
@@ -191,7 +193,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
           className="lyrics-editor-row"
           aria-current={sel || undefined}
           data-late={late || undefined}
-          style={band[i] === undefined ? undefined : { borderInlineStartColor: bandColor(band[i], 0.7) }}
+          style={band[i] === undefined ? undefined : { borderInlineStartColor: bandColor(band[i]) }}
         >
           <button
             type="button"
@@ -357,7 +359,8 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
               ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line or word to play from it. Words are quick: set the playback speed to 0.5×.`
               : 'Tap a line to play from its time. Too late? Drag the waveform back or nudge −0.1 s. For precise timing, set the playback speed to 0.5×.'}
             <span className="lyrics-editor-hint">
-              {' '}Keys: S or Enter = Stamp · ↑/↓ = choose {wordStep ? 'word' : 'line'} · Ctrl/⌘+Z = undo. Shortcuts work
+              {' '}Keys: S or Enter = Stamp · ↑/↓ = choose {wordStep ? 'word' : 'line'} · ←/→ = nudge 0.01 s
+              (Shift: 0.1 s) · Ctrl/⌘+Z = undo. Shortcuts work
               anywhere except while typing.
             </span>
           </p>
@@ -453,7 +456,7 @@ function LineTools({ line, dispatch, seek, resume }: ToolProps) {
         {back}
       </div>
     );
-  // ponytail: ±0.1 s only; finer steps aren't audible (the roadmap's ±10 ms were dropped after user review).
+  // ponytail: buttons are ±0.1 s only, to keep phones uncrowded; the handoff's ±10 ms is on ←/→ (no button).
   return (
     <div className="lyrics-editor-tools" role="group" aria-label="Fix this line">
       <p className="lyrics-editor-tip">

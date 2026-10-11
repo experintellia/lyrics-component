@@ -1,7 +1,8 @@
 import { type LrcLine } from './lrc';
 import type { Peaks } from './types';
-/** Section k's colour; the editor's line list uses it (stronger) to tie each verse to its band. */
-export declare const bandColor: (k: number, alpha?: number) => string;
+/** Section k's colour for the editor's line list (ties each verse to its band): a host's as given, else the
+ * default hue, stronger than its band. */
+export declare const bandColor: (k: number) => string;
 /** The visible [start, span]: centred on the playhead, or (word step) fitted to a line's span plus a margin,
  *  widened by the zoom buttons (`widen` ≥ 1). */
 export declare function viewWindow(centreMs: number, spanMs: number, fit?: [number, number] | null, widen?: number): [number, number];

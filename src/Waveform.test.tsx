@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { lineSpan, parseLrc, sections } from './lrc';
-import { viewWindow, Waveform, wordMarks } from './Waveform';
+import { bandColor, viewWindow, Waveform, wordMarks } from './Waveform';
 
 const lines = (lrc: string) => parseLrc(lrc).lines;
 
@@ -24,6 +24,12 @@ describe('sections', () => {
       { startMs: 10_000, endMs: 12_000, label: '', from: 7, to: 8 },
     ]);
     expect(sections(lines('plain\ntext'))).toEqual([]);
+  });
+});
+
+describe('bandColor', () => {
+  it('uses the host’s --lyrics-section-N (cycling past 4), else the default hue', () => {
+    expect(bandColor(4)).toBe('var(--lyrics-section-1, hsl(30 75% 50% / 0.7))');
   });
 });
 
