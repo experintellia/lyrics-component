@@ -124,6 +124,9 @@ The demo pins its `<audio>` controls and the Stamp button at the bottom on small
   the editor."
 - A Preview | Edit tab switch instead of a checkbox. It opens on Edit when there are no lyrics or they
   are plain text.
+- **Drafts** (#1): unsaved lyrics autosave to `localStorage`, one per song, keyed by the audio file's
+  name + size + lastModified (the audio isn't stored). On load: "Restore your lyrics for *song*?";
+  re-picking that file attaches it. Cleared by Download or Discard; listed in ⚙ Settings.
 
 ### Verification
 - e2e: plain text → sync every line → sync words on one line → preview highlights the right line and
