@@ -155,6 +155,7 @@ Plain CSS. Set any of these on an ancestor:
 | `--lyrics-bg` | background | transparent |
 | `--lyrics-muted` | other lines, borders, hints | `#767676` / `#888` |
 | `--lyrics-radius` | corners (0 is fine) | `8px` / `6px` |
+| `--lyrics-section-1` … `-4` | editor's section colours, cycling past 4: waveform bands (made translucent), label chips (white label) and verse edges (as given) | orange, green, purple, yellow |
 | `--lyrics-sticky-bottom` | editor's sticky Stamp bar offset from the viewport bottom | `0px` |
 | `--lyrics-sticky-top` | editor's sticky step tabs offset from the viewport top | `0px` |
 
