@@ -162,7 +162,11 @@ test('Save and ⚙ menus: Esc closes them; a choice hands focus back to Save', a
   await page.keyboard.press('Escape');
   await expect(download).toBeHidden();
   await expect(save).toBeFocused();
-  await downloadText(page); // opens the menu, picks Download
+  await save.click();
+  const saved = page.waitForEvent('download');
+  await download.focus();
+  await page.keyboard.press('Enter'); // a keyboard choice
+  await saved;
   await expect(download).toBeHidden();
   await expect(save).toBeFocused(); // not dropped to <body> with the closed panel
 
@@ -175,7 +179,7 @@ test('Save and ⚙ menus: Esc closes them; a choice hands focus back to Save', a
 
 test("audio the browser can't decode: no waveform, and the demo says why", async ({ page }) => {
   await page.goto('/');
-  const hint = page.getByText(/^No waveform: this browser can't decode the audio/);
+  const hint = page.getByText(/^No waveform: this file couldn't be decoded here/);
   await page.getByLabel('Audio file').setInputFiles({ name: 'broken.wav', mimeType: 'audio/wav', buffer: wav(1).subarray(0, 20) }); // header cut off
   await expect(hint).toBeVisible();
   await loadAudio(page); // a real file: decodes, so the hint goes

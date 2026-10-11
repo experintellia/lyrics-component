@@ -187,10 +187,11 @@ function App() {
     setSaveMenu(open);
     setCopied('');
   };
-  // After a choice or Esc, focus goes back to Save instead of dropping to <body> with the closed panel.
+  // After a choice or Esc made from inside the menu (keyboard; Safari doesn't focus tapped buttons), focus goes back
+  // to Save instead of dropping to <body> with the closed panel.
   const closeSaveMenu = () => {
     toggleSaveMenu(false);
-    saveButton.current?.focus();
+    if (saveButton.current?.parentElement?.contains(document.activeElement)) saveButton.current.focus();
   };
   const saveFile = (text: string, name: string) => {
     const a = document.createElement('a');
@@ -237,7 +238,7 @@ function App() {
               onChange={(e) => e.target.files?.[0] && pickAudio(e.target.files[0])} />
           </label>
           {fresh && <small>An audio file you own. It stays on this device.</small>}
-          {noPeaks && <small>No waveform: this browser can't decode the audio (e.g. in Lockdown Mode). Syncing still works.</small>}
+          {noPeaks && <small>No waveform: this file couldn't be decoded here (e.g. Lockdown Mode blocks it).</small>}
         </div>
         <div className="demo-file">
           <label>

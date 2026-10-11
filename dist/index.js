@@ -5,7 +5,7 @@ const SNAP_MS = 300;
 const CAP_MS = 500;
 const SEEK_HOLD_MS = 1e3;
 const holding = (s, now) => s.seekMs !== null && now < s.seekUntil;
-const rateOf = (p) => p.rate || 1;
+const rateOf = (p) => p.rate === 0 && p.playing ? 0 : p.rate || 1;
 function clockTime(s, now) {
   if (holding(s, now)) return s.seekMs;
   if (!s.playing || s.fresh) return s.tickMs;

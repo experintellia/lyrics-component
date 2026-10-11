@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { clockTime, seekClock, startClock, tick, usePlaybackTime, visibleClock } from './clock';
+import { clockTime, rateOf, seekClock, startClock, tick, usePlaybackTime, visibleClock } from './clock';
 import type { Position } from './types';
 
 const pos = (timeMs: number, playing = true): Position => ({ timeMs, playing, durationMs: 300_000 });
@@ -108,10 +108,12 @@ describe('clock state machine', () => {
     expect(clockTime(s, 5_000)).toBe(10_250);
   });
 
-  it('rate 0 or NaN counts as 1 (a native player may report 0 while paused)', () => {
-    for (const rate of [0, NaN]) expect(clockTime(startClock({ ...pos(10_000), rate }, 0), 200)).toBe(10_200);
-    const s = startClock(pos(10_000), 0);
-    expect(tick(s, { ...pos(10_000), rate: 0 }, 100)).toBe(s); // same rate: not a new tick
+  it('rate: absent, NaN, or 0 while paused count as 1 (a native player reports 0 while paused); playing at 0 holds', () => {
+    expect([undefined, NaN, 0].map((rate) => rateOf({ ...pos(0, false), rate }))).toEqual([1, 1, 1]);
+    expect(clockTime(startClock({ ...pos(10_000), rate: NaN }, 0), 200)).toBe(10_200);
+    expect(clockTime(startClock({ ...pos(10_000), rate: 0 }, 0), 200)).toBe(10_000); // a real freeze
+    const s = startClock(pos(10_000, false), 0);
+    expect(tick(s, { ...pos(10_000, false), rate: 0 }, 100)).toBe(s); // same rate: not a new tick
   });
 
   it('a rate change with the same timeMs re-bases interpolation', () => {
@@ -183,8 +185,8 @@ describe('usePlaybackTime', () => {
     expect(out.audibleMs).toBe(30_000);
   });
 
-  it('rate 0: offsetMs counts in full, as at rate 1', async () => {
-    await render({ ...pos(10_000), rate: 0 }, 200);
+  it('paused at rate 0: offsetMs counts in full, as at rate 1', async () => {
+    await render({ ...pos(10_000, false), rate: 0 }, 200);
     expect(out.audibleMs).toBe(9_800);
   });
 
