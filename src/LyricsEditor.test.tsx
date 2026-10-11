@@ -262,6 +262,16 @@ describe('Sync lines', () => {
     expect(button('+0.1 s')).toBeUndefined(); // tools only for a stamped line
   });
 
+  it('←/→ nudge 10 ms, Shift+←/→ 100 ms (also on a clicked slider)', () => {
+    render({ lrc: '[00:01.00]<00:01.50>a' });
+    key('ArrowRight');
+    expect(lastLrc()).toBe('[00:01.01]<00:01.51>a\n');
+    const slider = container.appendChild(document.createElement('input'));
+    slider.type = 'range';
+    key('ArrowLeft', { shiftKey: true }, slider);
+    expect(lastLrc()).toBe('[00:00.91]<00:01.41>a\n');
+  });
+
   it('undo/redo: one step per stamp/nudge/clear, via buttons and shortcuts', () => {
     render();
     click(stampButton()); // a @ 5.00
@@ -336,6 +346,36 @@ describe('Sync lines', () => {
     expect(rows().map((r) => r.hasAttribute('data-late'))).toEqual([false, true]);
     render({ position: pos(0, 0) });
     expect(rows().map((r) => r.hasAttribute('data-late'))).toEqual([false, false]);
+  });
+
+  it('Lyrics step: ↺ 5 s seeks back 5 s (clamped at 0, + offsetMs) without taking focus; off with no song', () => {
+    render({ position: pos(12_000), offsetMs: 200 });
+    click(tab('Lyrics'));
+    const back = $$('button').find((b) => b.ariaLabel === 'Back 5 s')!;
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(7_000); // audible 11.8 s − 5 s, + 200 ms
+    const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
+    act(() => void back.dispatchEvent(ev));
+    expect(ev.defaultPrevented).toBe(true);
+    render({ position: pos(7_000) }); // the host lands
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(2_000);
+    render({ position: pos(2_000) });
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(200); // audible 0 + offsetMs
+    render({ position: pos(0, 0) });
+    expect(back.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('Lyrics step: the jump back scales with playback rate (5 s of listening)', () => {
+    render({ position: { ...pos(10_000), rate: 0.5 } });
+    click(tab('Lyrics'));
+    const back = $$('button').find((b) => b.ariaLabel?.startsWith('Back'))!;
+    expect([back.textContent, back.ariaLabel]).toEqual(['↺ 2.5 s', 'Back 2.5 s']);
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(7_500);
+    render({ position: { ...pos(7_500), rate: 0.75 } });
+    expect(back.textContent).toBe('↺ 3.8 s'); // 3.75, rounded for the label
   });
 
   it('stamp button prevents default on pointerdown (keeps focus / no iOS keyboard)', () => {
@@ -428,6 +468,12 @@ describe('Sync words: playing from words, nudges, loop', () => {
     click($$('.lyrics-editor-chip')[0]);
     click(button('−0.1 s'));
     expect(lastLrc()).toBe('[00:00.90]<00:00.90>a <00:02.10>b\n');
+    key('ArrowRight', { shiftKey: true }); // keys too: word 0 still moves the line
+    key('ArrowLeft');
+    expect(lastLrc()).toBe('[00:00.99]<00:00.99>a <00:02.10>b\n');
+    click($$('.lyrics-editor-chip')[1]);
+    key('ArrowRight');
+    expect(lastLrc()).toBe('[00:00.99]<00:00.99>a <00:02.11>b\n');
   });
 
   it('Loop line: playing past the line end seeks to its start, once per pass; off when unticked or in the line step', () => {

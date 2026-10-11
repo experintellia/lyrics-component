@@ -17,7 +17,7 @@ const STATES = {
   '04-sync-start-plaintext': 'Step 2 Sync lines right after Next: no line has timing yet, line 1 selected, playhead at 0.',
   '05-sync-midway': 'Step 2 Sync lines with lines 1–6 stamped, line 7 selected, playhead at 0:11.6.',
   '05b-sync-fix-line': 'Step 2 Sync lines: the user tapped stamped line 3 to fix it; the playhead jumped to its stamp, and its nudge / play / back-to-line-7 / clear tools show.',
-  '05c-sync-done': 'Step 2 Sync lines right after stamping the last line: a done card replaces Stamp, Download is primary.',
+  '05c-sync-done': 'Step 2 Sync lines right after stamping the last line: a done card replaces Stamp, Save is primary.',
   '05d-sync-slow': 'Step 2 Sync lines at 0.5× speed after tapping line 6 to fix it: the pinned waveform shows coloured stanza bands (matching the rows\' left edges) and line 6\'s span tinted in the accent colour; line 6\'s tools are in view below.',
   '05e-waveform-drag': 'Same as 05d, mid-drag: the waveform was dragged left (forward in time); a time bubble on the playhead shows where it will land; the seek happens on release.',
   '06-sync-words': 'Step 3 Sync words on line 5, paused at 0:08.8: the waveform fits line 5 (0:08.0–0:09.75), bracketed as the loop with everything outside dimmed; each timed word ("Carry", "me", "home") has an outlined label chip (shortened with "…" if its span is narrow), the untimed rest ("on the evening tide") follows "home" as faint text, alternate word spans are shaded, and the next word "on" is flagged at the playhead; the status reads "↻ Line 5: word 4 of 7" next to the "↻ Loop line" toggle (on); "▶ Play line" (the selected word "on" has no time yet).',

@@ -96,7 +96,14 @@ export async function seek(page: Page, s: number) {
 }
 
 export async function loadAudio(page: Page, seconds = 5, musical = false) {
-  await page.getByLabel('Audio file').setInputFiles({ name: 'song.wav', mimeType: 'audio/wav', buffer: wav(seconds, musical) });
+  // By script, not setInputFiles (which stamps lastModified "now"): a re-pick must be the same file
+  // (name, size, lastModified), as the demo keys its drafts.
+  await page.getByLabel('Audio file').evaluate((input: HTMLInputElement, b64) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'song.wav', { type: 'audio/wav', lastModified: 1.7e12 }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, wav(seconds, musical).toString('base64'));
   await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(seconds, 1);
 }
 
