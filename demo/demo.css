@@ -231,8 +231,10 @@ summary {
   display: flex;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
   overflow-wrap: anywhere;
+}
+.demo-drafts span {
+  flex: 1;
 }
 .demo-drafts button {
   min-width: 44px;

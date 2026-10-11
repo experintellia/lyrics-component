@@ -23,7 +23,7 @@ const tryStorage = <T,>(f: () => T, fallback: T) => {
     return fallback;
   }
 };
-const readDrafts = (): Record<string, Draft> => tryStorage(() => JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? '{}'), {});
+const readDrafts = (): Record<string, Draft> => tryStorage(() => JSON.parse(localStorage.getItem(DRAFTS_KEY) ?? '{}') || {}, {});
 const ago = (t: number) => {
   const m = Math.round((Date.now() - t) / 60000);
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
@@ -48,6 +48,7 @@ function App() {
   const [offer, setOffer] = useState<string | null>(newest[0]?.[0] ?? null); // draft key the Restore prompt offers
   const [restored, setRestored] = useState<string | null>(null); // restored draft's key, until its audio is picked
   const [noStorage, setNoStorage] = useState(false);
+  const asking = offer !== null && !!drafts[offer]; // the Restore prompt replaces the editor until answered
   const draftKey = file ? audioKey(file) : (restored ?? '');
   const dirty = lrc !== saved;
   const lines = useMemo(() => parseLrc(lrc).lines.filter((l) => displayText(l.text)), [lrc]);
@@ -81,29 +82,37 @@ function App() {
   }, [dirty]);
 
   // Autosave. ponytail: no debounce of our own: the editor already emits typing after ~500 ms idle, and a
-  // stamp is one small write. Never over a draft the Restore prompt still offers.
+  // stamp is one small write. Never over a draft the Restore prompt still offers (the editor is hidden meanwhile).
   useEffect(() => {
     if (offer === draftKey || !dirty || !lrc.trim() || drafts[draftKey]?.lrc === lrc) return;
-    // Picking audio for lyrics typed without one moves them to that song (one '' slot only).
-    const { '': _, ...rest } = drafts;
-    setDrafts({ ...rest, [draftKey]: { name: file?.name ?? drafts[draftKey]?.name ?? '', lrc, at: Date.now() } });
+    updateDrafts((d) => ({ ...d, [draftKey]: { name: file?.name ?? drafts[draftKey]?.name ?? '', lrc, at: Date.now() } }));
   }, [lrc, draftKey, offer]);
-  useEffect(() => {
-    setNoStorage(!tryStorage(() => (localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)), true), false));
-  }, [drafts]);
+  // Read-modify-write on the stored drafts, not our copy: another tab may have saved one since.
+  const updateDrafts = (f: (d: Record<string, Draft>) => Record<string, Draft>) => {
+    const d = f(readDrafts());
+    setDrafts(d);
+    setNoStorage(!tryStorage(() => (localStorage.setItem(DRAFTS_KEY, JSON.stringify(d)), true), false));
+  };
   const dropDraft = (k: string) => {
-    setDrafts(({ [k]: _, ...rest }) => rest);
+    updateDrafts(({ [k]: _, ...rest }) => rest);
     setOffer((o) => (o === k ? null : o));
   };
 
   const pickAudio = (f: File) => {
     const k = audioKey(f);
+    const conflict = drafts[k] && drafts[k].lrc !== lrc;
     setFile(f);
     setRestored(null); // the restored draft's own file attaches: its draft equals the lyrics, so no offer
-    setOffer(drafts[k] && drafts[k].lrc !== lrc ? k : null);
+    setOffer(conflict ? k : null);
+    // Lyrics typed without audio move to this song (autosave writes them under its key).
+    if (!conflict && draftKey === '' && drafts['']?.lrc === lrc) dropDraft('');
   };
   const restore = (k: string) => {
     const text = drafts[k].lrc;
+    if (file && audioKey(file) !== k) {
+      setFile(null); // another song's lyrics: detach this audio, ask for theirs
+      setUrl('');
+    }
     setLrc(text);
     setSaved(''); // not on disk
     setLyricsName('');
@@ -153,7 +162,7 @@ function App() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     setSaved(lrc);
-    dropDraft(draftKey); // on disk now
+    if (drafts[draftKey]?.lrc === lrc) dropDraft(draftKey); // on disk now
   };
 
   const props = { lrc, position, onSeek, peaks, offsetMs };
@@ -233,6 +242,7 @@ function App() {
                 {newest.map(([k, d]) => (
                   <li key={k}>
                     <span>{d.name || 'Lyrics without audio'} · {ago(d.at)}</span>
+                    <button type="button" aria-label={`Restore draft: ${d.name || 'lyrics without audio'}`} onClick={() => restore(k)}>↺</button>
                     <button type="button" aria-label={`Delete draft: ${d.name || 'lyrics without audio'}`} onClick={() => dropDraft(k)}>✕</button>
                   </li>
                 ))}
@@ -267,7 +277,7 @@ function App() {
         )}
         {noStorage && <p className="demo-hint">This browser won't save drafts (private mode?): download to keep your work.</p>}
         {/* key: remount on new audio or a loaded lyrics file resets undo, scroll and step, like a host's key={trackId}. */}
-        {tab === 'edit' ? (
+        {asking ? null : tab === 'edit' ? (
           <LyricsEditor key={`${url}|${loads}`} {...props} onChange={setLrc} />
         ) : lrc.trim() ? (
           <>
