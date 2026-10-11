@@ -751,14 +751,16 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     return () => window.removeEventListener("keydown", h, true);
   }, []);
   const list = useRef(null);
+  const head = useRef(null);
   useEffect(() => {
     var _a2;
+    const el = head.current;
+    el.parentElement.style.setProperty("--lyrics-head-h", `${el.offsetHeight}px`);
     const row = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]");
-    const ed = row == null ? void 0 : row.closest(".lyrics-editor");
-    if (!(row == null ? void 0 : row.scrollIntoView) || !ed) return;
+    if (!(row == null ? void 0 : row.scrollIntoView)) return;
     const r = row.getBoundingClientRect();
-    const top = Math.max(0, ed.querySelector(".lyrics-editor-head").getBoundingClientRect().bottom);
-    const bottom = Math.min(innerHeight, ed.querySelector(".lyrics-editor-dock").getBoundingClientRect().top);
+    const top = Math.max(0, el.getBoundingClientRect().bottom);
+    const bottom = Math.min(innerHeight, el.parentElement.querySelector(".lyrics-editor-dock").getBoundingClientRect().top);
     if (r.top < top) row.scrollIntoView({ block: "start" });
     else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? "start" : "end" });
   }, [s.sel, s.step, lines]);
@@ -832,7 +834,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     ] });
   const progress = !textLines.length ? "" : wordStep ? `${loop ? "↻ " : ""}Line ${lineNo}${!ws.length ? "" : s.word < ws.length ? `: word ${s.word + 1} of ${ws.length}` : ": all words timed ✓"}` : allSynced ? line ? `All ${textLines.length} lines synced ✓` : "" : `${synced} of ${textLines.length} lines synced`;
   return /* @__PURE__ */ jsxs("div", { className: "lyrics-editor", children: [
-    /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-head", children: [
+    /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-head", ref: head, children: [
       /* @__PURE__ */ jsx("div", { className: "lyrics-editor-tabs", role: "tablist", "aria-label": "Editor steps", children: STEPS.map(([id, name, note], k) => /* @__PURE__ */ jsxs(
         "button",
         {
