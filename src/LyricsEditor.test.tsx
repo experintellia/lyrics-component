@@ -151,6 +151,7 @@ describe('LyricsEditor steps', () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     act(() => void document.dispatchEvent(new Event('visibilitychange')));
     expect(lastLrc()).toBe('typed\nmore\n');
+    act(() => vi.advanceTimersByTime(500)); // the idle commit must not re-emit the flushed text
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 });
