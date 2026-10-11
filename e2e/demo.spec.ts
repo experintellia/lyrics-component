@@ -249,7 +249,8 @@ test('S stamps while a tab button has focus; unsaved edits trigger the beforeunl
 });
 
 // 700 px: a typical phone. 555 px: iPhone SE in Safari, where the Preview/Edit bar scrolls away (≤ 640 px).
-for (const [width, height] of [[390, 700], [375, 555]])
+// 667×325: the SE in landscape (≤ 450 px), where the step tabs scroll away too and only the waveform stays.
+for (const [width, height] of [[390, 700], [375, 555], [667, 325]])
 test(`tap-along on a ${width}×${height} phone: the selected line stays clear of the Stamp bar, and Stamp of the pinned audio`, async ({ page }) => {
   await page.setViewportSize({ width, height });
   await page.goto('/');
@@ -267,11 +268,15 @@ test(`tap-along on a ${width}×${height} phone: the selected line stays clear of
     expect(row.y + row.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(dock.y);
     const btn = (await stamp.boundingBox())!;
     expect(btn.y + btn.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(transport.y);
-    // Step tabs stick right under the Preview/Edit bar (short screen: at the top, the bar scrolled away). From
-    // stamp 3 on, the list has scrolled the page past the file pickers.
+    // Step tabs stick right under the Preview/Edit bar (short screen: at the top, the bar scrolled away; landscape:
+    // the waveform at the top). From stamp 3 on, the list has scrolled the page past the file pickers.
     const nav = (await page.locator('.demo-tabs').boundingBox())!;
     const tabs = (await page.locator('.lyrics-editor-tabs').boundingBox())!;
-    if (i >= 2) expect(Math.abs(tabs.y - (height > 640 ? nav.y + nav.height : 0)), `after stamp ${i + 1}`).toBeLessThan(2);
+    const wave = (await page.locator('.lyrics-wave').boundingBox())!;
+    if (i >= 2) {
+      const pinned = height <= 450 ? wave.y : tabs.y - (height > 640 ? nav.y + nav.height : 0);
+      expect(Math.abs(pinned), `after stamp ${i + 1}`).toBeLessThan(2);
+    }
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); // no sideways scroll
 });

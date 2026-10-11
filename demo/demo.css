@@ -414,3 +414,18 @@ summary {
     position: relative;
   }
 }
+/* Phones in landscape: a slimmer transport, and rows scroll clear of the editor's one-row dock above it. */
+@media (max-height: 450px) {
+  :root {
+    --demo-transport-h: calc(52px + env(safe-area-inset-bottom, 0px));
+  }
+  .demo-transport {
+    padding-block: 4px calc(4px + env(safe-area-inset-bottom, 0px));
+  }
+  .demo-play {
+    min-height: 44px;
+  }
+  #root:has(.demo-transport:not([hidden])) .lyrics-editor-row {
+    scroll-margin-bottom: calc(76px + var(--demo-transport-h));
+  }
+}
