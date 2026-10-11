@@ -767,18 +767,13 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     return () => window.removeEventListener("keydown", h, true);
   }, []);
   const list = useRef(null);
-  useEffect(() => {
-    var _a2, _b2, _c;
-    (_c = (_b2 = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]")) == null ? void 0 : _b2.scrollIntoView) == null ? void 0 : _c.call(_b2, { block: "nearest" });
-  }, [s.sel, s.step, lines]);
   const head = useRef(null);
   useEffect(() => {
+    var _a2, _b2, _c;
     const el = head.current;
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => el.parentElement.style.setProperty("--lyrics-head-h", `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    el.parentElement.style.setProperty("--lyrics-head-h", `${el.offsetHeight}px`);
+    (_c = (_b2 = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]")) == null ? void 0 : _b2.scrollIntoView) == null ? void 0 : _c.call(_b2, { block: "nearest" });
+  }, [s.sel, s.step, lines]);
   const rows = useMemo(() => {
     const band = new Array(lines.length);
     sections(lines).forEach((sec, k) => band.fill(k, sec.from, sec.to));

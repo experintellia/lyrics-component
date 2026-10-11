@@ -161,7 +161,8 @@ Fonts are inherited. Auto-scroll is not smooth under `prefers-reduced-motion: re
 In a word-synced current line, words are wrapped in `.lyrics-sung`, `.lyrics-active` and
 `.lyrics-upcoming` spans (other lines are plain text). The active word's progress is the
 `--lyrics-fill` percentage, written on that span every frame by the component; it's an output to
-style against, not a setting.
+style against, not a setting. Likewise `--lyrics-head-h` (the editor's sticky head height, written on
+`.lyrics-editor` before scrolling a row into view) is set by the component, not by the host.
 
 ## Development
 

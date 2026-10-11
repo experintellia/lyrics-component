@@ -168,20 +168,14 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
 
   // Keep the selected line in view (CSS scroll-margin keeps it clear of the sticky Stamp button). Also on
   // doc changes: stamping the last line keeps it selected but adds its tools, so the row grows.
+  // The rows' scroll-margin clears the sticky head by its height, measured now (fonts, waveform, wrapping vary).
   const list = useRef<HTMLOListElement>(null);
-  useEffect(() => {
-    list.current?.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest' });
-  }, [s.sel, s.step, lines]);
-
-  // The rows' scroll-margin clears the sticky head by its measured height (fonts, waveform, wrapping vary).
   const head = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = head.current!;
-    if (typeof ResizeObserver === 'undefined') return; // CSS falls back to typical heights
-    const ro = new ResizeObserver(() => el.parentElement!.style.setProperty('--lyrics-head-h', `${el.offsetHeight}px`));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    el.parentElement!.style.setProperty('--lyrics-head-h', `${el.offsetHeight}px`);
+    list.current?.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [s.sel, s.step, lines]);
 
   // The editor re-renders every animation frame while playing; the list only when its inputs change.
   const rows = useMemo(() => {
