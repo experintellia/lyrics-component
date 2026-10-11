@@ -37,7 +37,10 @@ export const hasText = (l: LrcLine | undefined) => !!l && !!displayText(l.text);
 export const docText = (doc: LrcDoc) => doc.lines.map((l) => displayText(l.text)).join('\n');
 /** Words to stamp: lineWords minus a trailing end tag (an empty word, only ever last). */
 export const words = (l: LrcLine | undefined) => (l ? lineWords(l.text).filter((w) => w.text) : []);
-const nextWord = (l: LrcLine | undefined) => Math.max(0, words(l).findIndex((w) => w.timeMs === null));
+// A stamped line's word 0 is already timed by the line stamp (its tag is written with the next word), so
+// word stamping starts at word 1: the editor jumps to the line start, where word 0 begins at once.
+const nextWord = (l: LrcLine | undefined) =>
+  Math.max(0, words(l).findIndex((w, k) => w.timeMs === null && !(k === 0 && l!.timeMs !== null)));
 export const hasWordTimes = (l: LrcLine) => lineWords(l.text).some((w) => w.timeMs !== null);
 
 /** Next line with text from i in direction d (blank lines are stanza breaks, skipped), or i. */
@@ -166,6 +169,7 @@ export function reducer(s: State, a: Action): State {
       const n = ws.filter((w) => w.text).length;
       if (!line || s.word >= n) return s;
       ws[s.word] = { ...ws[s.word], timeMs: a.ms };
+      if (s.word > 0 && ws[0].timeMs === null) ws[0] = { ...ws[0], timeMs: line.timeMs };
       // Word 0's tag is the line time.
       const l: LrcLine = { timeMs: s.word === 0 ? a.ms : line.timeMs, text: joinWords(ws) };
       if (s.word + 1 < n) return put(l, { word: s.word + 1 });
@@ -191,7 +195,7 @@ export function reducer(s: State, a: Action): State {
     case 'clear':
       return line?.timeMs != null ? put(setLineTime(line, null)) : s;
     case 'clearWords':
-      return line && hasWordTimes(line) ? put({ ...line, text: displayText(line.text) }, { word: 0 }) : s;
+      return line && hasWordTimes(line) ? put({ ...line, text: displayText(line.text) }, { word: nextWord(line) }) : s;
     case 'undo': {
       const c = applyDraft(s); // typing not yet committed is the last change
       return c.past.length ? restore(c, c.past[c.past.length - 1], c.past.slice(0, -1), [c.doc, ...c.future]) : c;

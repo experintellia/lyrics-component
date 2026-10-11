@@ -189,7 +189,7 @@ function LyricsView({ lrc, position, onSeek, offsetMs = 0 }) {
 const hasText = (l) => !!l && !!displayText(l.text);
 const docText = (doc) => doc.lines.map((l) => displayText(l.text)).join("\n");
 const words = (l) => l ? lineWords(l.text).filter((w) => w.text) : [];
-const nextWord = (l) => Math.max(0, words(l).findIndex((w) => w.timeMs === null));
+const nextWord = (l) => Math.max(0, words(l).findIndex((w, k) => w.timeMs === null && !(k === 0 && l.timeMs !== null)));
 const hasWordTimes = (l) => lineWords(l.text).some((w) => w.timeMs !== null);
 function next(lines, i, d) {
   for (let k = i + d; k >= 0 && k < lines.length; k += d) if (hasText(lines[k])) return k;
@@ -303,6 +303,7 @@ function reducer(s, a) {
       const n = ws.filter((w) => w.text).length;
       if (!line || s.word >= n) return s;
       ws[s.word] = { ...ws[s.word], timeMs: a.ms };
+      if (s.word > 0 && ws[0].timeMs === null) ws[0] = { ...ws[0], timeMs: line.timeMs };
       const l = { timeMs: s.word === 0 ? a.ms : line.timeMs, text: joinWords(ws) };
       if (s.word + 1 < n) return put(l, { word: s.word + 1 });
       const sel = next(lines, s.sel, 1);
@@ -327,7 +328,7 @@ function reducer(s, a) {
     case "clear":
       return (line == null ? void 0 : line.timeMs) != null ? put(setLineTime(line, null)) : s;
     case "clearWords":
-      return line && hasWordTimes(line) ? put({ ...line, text: displayText(line.text) }, { word: 0 }) : s;
+      return line && hasWordTimes(line) ? put({ ...line, text: displayText(line.text) }, { word: nextWord(line) }) : s;
     case "undo": {
       const c = applyDraft(s);
       return c.past.length ? restore(c, c.past[c.past.length - 1], c.past.slice(0, -1), [c.doc, ...c.future]) : c;
@@ -713,6 +714,10 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   useEffect(() => {
     if (loop && span && position.playing && audibleMs >= span[1]) seekRef.current(span[0]);
   });
+  const lineStart = wordStep ? line == null ? void 0 : line.timeMs : null;
+  useEffect(() => {
+    if (lineStart != null) seekRef.current(lineStart);
+  }, [s.sel, wordStep]);
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: "stampWord", ms } : { t: "stamp", ms });

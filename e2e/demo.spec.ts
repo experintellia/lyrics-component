@@ -79,6 +79,8 @@ test('full flow: plain text → sync every line → sync words → preview highl
   // Word timing on line 2 (paused; seek, then stamp each word).
   await page.getByRole('tab', { name: 'Sync words' }).click();
   await page.getByRole('button', { name: /Second line here/ }).click();
+  await expect(stamp).toHaveText('Stamp “line”'); // word 0 is timed by the line stamp
+  await page.locator('.lyrics-editor-chip', { hasText: 'Second' }).click(); // re-time it anyway
   for (const [t, w] of [[1.5, 'Second'], [1.7, 'line'], [1.9, 'here']] as const) {
     await seek(page, t);
     await expect(page.getByLabel('Playback position')).toHaveText(`00:0${t.toFixed(2)}`);
@@ -86,6 +88,10 @@ test('full flow: plain text → sync every line → sync words → preview highl
     await stamp.click();
   }
   await expect(page.getByText('1 of 4 lines have word timing')).toBeVisible();
+  // Line finished: playback jumps to the next line's start.
+  const third = (await page.locator('.lyrics-editor-row', { hasText: 'Third line' }).locator('.lyrics-editor-time').textContent())!;
+  const [mm, ss] = third.split(':');
+  await expect.poll(() => page.evaluate(() => document.querySelector('audio')!.currentTime)).toBeCloseTo(+mm * 60 + +ss, 1);
 
   await page.getByRole('tab', { name: 'Preview' }).click();
   await seek(page, 1.8);

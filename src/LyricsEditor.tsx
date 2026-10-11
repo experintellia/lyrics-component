@@ -111,6 +111,12 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   useEffect(() => {
     if (loop && span && position.playing && audibleMs >= span[1]) seekRef.current(span[0]);
   });
+  // Word step: a new line (finished the last word, Next line, ↑/↓ across lines, entering the step) starts
+  // playback at its stamp, so its first words aren't missed while the previous line's last word rang out.
+  const lineStart = wordStep ? line?.timeMs : null;
+  useEffect(() => {
+    if (lineStart != null) seekRef.current(lineStart);
+  }, [s.sel, wordStep]);
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: 'stampWord', ms } : { t: 'stamp', ms });

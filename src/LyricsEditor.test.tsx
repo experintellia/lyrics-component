@@ -335,22 +335,27 @@ describe('Sync lines', () => {
 });
 
 describe('Sync words', () => {
-  it('stamps words in order (word 0 sets the line time), then moves to the next line', () => {
+  it('starts at word 1 (word 0 = the line stamp); a finished line jumps playback to the next line start', () => {
     render({ lrc: '[00:01.00]hello world\n[00:03.00]bye' });
     click(tab('Sync words'));
+    expect(onSeek).toHaveBeenLastCalledWith(1_000); // entering the step: from the line start
     expect(chips()).toEqual(['hello', 'world']);
-    expect(stampButton().textContent).toBe('Stamp “hello”');
-    click(stampButton()); // 5.00
-    expect(lastLrc()).toBe('[00:05.00]<00:05.00>hello world\n[00:03.00]bye\n');
-    render({ position: pos(5_500) });
-    key('s');
-    expect(lastLrc()).toBe('[00:05.00]<00:05.00>hello <00:05.50>world\n[00:03.00]bye\n');
+    expect(stampButton().textContent).toBe('Stamp “world”');
+    render({ position: pos(1_200) }); // the host lands near the seek
+    click(stampButton());
+    expect(lastLrc()).toBe('[00:01.00]<00:01.00>hello <00:01.20>world\n[00:03.00]bye\n');
     expect(selected()).toBe(1);
-    expect(stampButton().textContent).toBe('Stamp “bye”');
+    expect(onSeek).toHaveBeenLastCalledWith(3_000); // line done: playback jumps to the next line's start
+    expect(stampButton().textContent).toBe('Stamp “bye”'); // one-word line: its only word is word 0
     expect(container.textContent).toContain('1 of 2 lines have word timing');
     click(rows()[0].querySelector('button')!);
+    click($$('.lyrics-editor-chip')[0]); // word 0 can still be re-timed; it sets the line time
+    render({ position: pos(1_100) });
+    key('s');
+    expect(lastLrc()).toBe('[00:01.10]<00:01.10>hello <00:01.20>world\n[00:03.00]bye\n');
     click(button('Next line →'));
     expect(selected()).toBe(1);
+    expect(onSeek).toHaveBeenLastCalledWith(3_000);
   });
 
   it('partly timed lines show "n/m words" and do not count as done; the dock names line and word', () => {
@@ -358,7 +363,7 @@ describe('Sync words', () => {
     click(tab('Sync words'));
     expect($$('.lyrics-editor-badge').map((b) => b.textContent)).toEqual(['1/3 words', '0/1 words']); // every line
     expect(container.textContent).toContain('0 of 2 lines have word timing');
-    expect(container.querySelector('.lyrics-editor-progress')!.textContent).toBe('00:05.00 · paused · ↻ Line 1: word 2 of 3');
+    expect(container.querySelector('.lyrics-editor-progress')!.textContent).toBe('00:01.00 · paused · ↻ Line 1: word 2 of 3');
     click(stampButton());
     click(stampButton());
     expect(container.textContent).toContain('1 of 2 lines have word timing');
@@ -414,7 +419,8 @@ describe('Sync words: playing from words, nudges, loop', () => {
   it('Loop line: playing past the line end seeks to its start, once per pass; off when unticked or in the line step', () => {
     const play = (timeMs: number) => render({ position: { ...pos(timeMs), playing: true } });
     render({ lrc: '[00:01.00]<00:01.00>a b\n[00:03.00]c', position: pos(2_000) });
-    click(tab('Sync words'));
+    click(tab('Sync words')); // seeks to the line start
+    render({ position: pos(1_000) }); // landed
     onSeek.mockClear();
     play(2_900);
     expect(onSeek).not.toHaveBeenCalled();
