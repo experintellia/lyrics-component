@@ -77,7 +77,8 @@ A blank line shows as a stanza gap in every mode (in LRC, one blank line after a
    seeks back to the line start whenever playback passes the line's end; while on, the waveform brackets
    the line and dims the rest, and the status reads "↻ Line 5: …".
 
-**Keyboard shortcuts:** S or Enter stamps, ↑/↓ choose a line (a word in step 3), Ctrl/⌘+Z undoes,
+**Keyboard shortcuts:** S or Enter stamps, ↑/↓ choose a line (a word in step 3), ←/→ nudge the selected
+line (word in step 3) by ±10 ms and Shift+←/→ by ±100 ms (finer than the buttons), Ctrl/⌘+Z undoes,
 Ctrl/⌘+Y or Shift+Ctrl/⌘+Z redoes. The rule is "shortcuts work anywhere except while typing": they
 are ignored only in a text entry (textarea, text or number input, contenteditable) and in a `<select>`,
 whose letters, arrows, Space and Enter all pick an option. A button or slider that was clicked or

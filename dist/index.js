@@ -748,6 +748,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     else if (s.step === "lyrics" || mod || e.altKey) return;
     else if (k === "s" || k === "enter") !e.repeat && stamp();
     else if (k === "arrowup" || k === "arrowdown") dispatch({ t: wordStep ? "moveWord" : "move", d: k === "arrowup" ? -1 : 1 });
+    else if (k === "arrowleft" || k === "arrowright") dispatch({ t: "nudge", d: (k === "arrowleft" ? -1 : 1) * (e.shiftKey ? 100 : 10) });
     else return;
     e.preventDefault();
   };
@@ -921,7 +922,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           " ",
           "Keys: S or Enter = Stamp · ↑/↓ = choose ",
           wordStep ? "word" : "line",
-          " · Ctrl/⌘+Z = undo. Shortcuts work anywhere except while typing."
+          " · ←/→ = nudge 0.01 s (Shift: 0.1 s) · Ctrl/⌘+Z = undo. Shortcuts work anywhere except while typing."
         ] })
       ] }),
       textLines.length ? /* @__PURE__ */ jsx("ol", { ref: list, className: "lyrics-editor-lines", children: rows }) : /* @__PURE__ */ jsx("button", { type: "button", className: "lyrics-editor-primary", onClick: () => dispatch({ t: "step", step: "lyrics" }), children: "← Add lyrics" }),
