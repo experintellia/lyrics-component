@@ -90,11 +90,20 @@ function App() {
   };
 
   const download = () => {
-    const a = document.createElement('a');
+    const name = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + '.lrc';
     // octet-stream, not text/plain: a type the browser can't display is always saved. With text/plain, iOS Safari
-    // may offer "View" or ignore `download` and open the text in this tab, which drops the page and its edits.
-    a.href = URL.createObjectURL(new Blob([lrc], { type: 'application/octet-stream' }));
-    a.download = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + '.lrc';
+    // may offer "View" or ignore `download` and open the text in this tab (dropping the page and its edits), and it
+    // saves it as .lrc.txt.
+    const f = new File([lrc], name, { type: 'application/octet-stream' });
+    // Phones: the share sheet ("Save to Files" on iOS) never leaves the page, and it resolves only once the file went
+    // somewhere, so cancelling keeps "unsaved changes". Desktop downloads; so does Android (Chrome won't share .lrc).
+    if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [f] })) {
+      navigator.share({ files: [f] }).then(() => setSaved(lrc), (e) => console.warn(e)); // rejected: cancelled
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f);
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 40_000); // iOS asks "Download?" first; the URL must outlive that
     setSaved(lrc);

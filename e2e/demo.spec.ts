@@ -112,6 +112,32 @@ test('full flow: plain text → sync every line → sync words → preview highl
   expect(text).toMatch(/^\[00:01\.50\]<00:01\.50>Second <00:01\.70>line <00:01\.90>here\n\n\[/m); // stanza break kept
 });
 
+test('phone: Download opens the share sheet with the .lrc; cancelling it keeps "unsaved changes"', async ({ page }) => {
+  // Stub a touch phone with a share sheet; the test sets data-cancel to cancel it.
+  await page.addInitScript(() => {
+    const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (q === '(pointer: coarse)' ? ({ matches: true } as MediaQueryList) : mm(q));
+    navigator.canShare = () => true;
+    navigator.share = async (data) => {
+      const f = data!.files![0];
+      document.body.dataset.shared = `${f.name} ${f.type}`;
+      if (document.body.dataset.cancel) throw new DOMException('Share canceled', 'AbortError');
+    };
+  });
+  await load(page);
+  await page.getByRole('tab', { name: 'Edit' }).click();
+  await page.getByRole('button', { name: /^Re-stamp/ }).click();
+  const save = page.getByRole('button', { name: /Download/ });
+  await expect(save).toContainText('unsaved changes');
+  await page.evaluate(() => (document.body.dataset.cancel = '1'));
+  await save.click();
+  await expect(page.locator('body')).toHaveAttribute('data-shared', 'song.lrc application/octet-stream');
+  await expect(save).toContainText('unsaved changes'); // cancelled: still unsaved
+  await page.evaluate(() => delete document.body.dataset.cancel);
+  await save.click();
+  await expect(save).not.toContainText('unsaved changes');
+});
+
 test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth scroll under reduced motion', async ({ page }) => {
   await load(page);
   const line = page.locator('.lyrics-line').first();
