@@ -344,7 +344,11 @@ const STEPS$1 = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1e3);
 const clampSpan = (ms) => Math.min(6e5, Math.max(1e3, ms));
 const DRAG_PX = 4;
 const HUES = [30, 150, 290, 60];
-const bandColor = (k, alpha = 0.2) => `hsl(${HUES[k % HUES.length]} 75% 50% / ${alpha})`;
+const section = (k) => [`--lyrics-section-${k % HUES.length + 1}`, HUES[k % HUES.length]];
+const bandColor = (k) => {
+  const [v, hue] = section(k);
+  return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
+};
 const LABEL = /^\[.+\]$/;
 const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
 const stampFrom = (lines, i, end) => {
@@ -439,10 +443,16 @@ function Waveform({ peaks, timeMs, lines, onSeek, selected, fit, marks, pending,
     const duration = peaks ? peaks.max.length * peaks.msPerBucket : Infinity;
     ctx.clearRect(0, 0, w, h);
     const secs = sections(lines, duration);
+    const secColor = (k, sl) => {
+      const [v, hue] = section(k);
+      return cssVar(v, `hsl(${hue} ${sl})`);
+    };
+    ctx.globalAlpha = 0.2;
     secs.forEach((s, k) => {
-      ctx.fillStyle = bandColor(k);
+      ctx.fillStyle = secColor(k, "75% 50%");
       ctx.fillRect(clampX(s.startMs), 0, clampX(s.endMs) - clampX(s.startMs), h);
     });
+    ctx.globalAlpha = 1;
     const sel = selected === void 0 ? null : lineSpan(lines, selected, duration);
     if (sel) {
       ctx.clearRect(clampX(sel[0]), 0, clampX(sel[1]) - clampX(sel[0]), h);
@@ -527,7 +537,7 @@ function Waveform({ peaks, timeMs, lines, onSeek, selected, fit, marks, pending,
       ctx.beginPath();
       ctx.rect(x0, 0, x1 - x0 - 2 * dpr, h);
       ctx.clip();
-      ctx.fillStyle = `hsl(${HUES[k % HUES.length]} 70% 32%)`;
+      ctx.fillStyle = secColor(k, "70% 32%");
       ctx.fillRect(x0 + 3 * dpr, 24 * dpr, ctx.measureText(s.label).width + 8 * dpr, 16 * dpr);
       ctx.fillStyle = "#fff";
       ctx.fillText(s.label, x0 + 7 * dpr, 36 * dpr);
@@ -781,7 +791,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           className: "lyrics-editor-row",
           "aria-current": sel || void 0,
           "data-late": late || void 0,
-          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i], 0.7) },
+          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i]) },
           children: [
             /* @__PURE__ */ jsxs(
               "button",

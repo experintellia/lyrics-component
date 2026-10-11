@@ -114,7 +114,8 @@ function App() {
           <label>
             <span className="demo-file-kind">Audio</span> <span className="demo-file-name">{file ? `♪ ${file.name}` : ''}</span>
             <span className="demo-pick">{file ? 'Change' : 'Choose audio file…'}</span>
-            <input type="file" className="demo-sr" aria-label="Audio file" accept="audio/*"
+            {/* Extensions, not audio/*: iOS Safari maps audio/* to movies only, greying out mp3s in Files. */}
+            <input type="file" className="demo-sr" aria-label="Audio file" accept=".mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac"
               onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} />
           </label>
           {fresh && <small>An audio file you own. It stays on this device.</small>}
