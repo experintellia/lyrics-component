@@ -529,7 +529,9 @@
     flex-direction: row;
   }
   .lyrics-editor-row {
-    scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 72px) 0 calc(76px + env(safe-area-inset-bottom, 0px));
+    /* the measured head minus the tabs hidden above the top edge, as above */
+    scroll-margin: calc(var(--lyrics-sticky-top, 0px) + var(--lyrics-head-h, 105px) - 53px + 20px) 0
+      calc(76px + env(safe-area-inset-bottom, 0px));
   }
   .lyrics-editor-progress {
     flex: 1 1 12em;
