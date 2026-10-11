@@ -182,14 +182,17 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   // Keep the selected line clear of the sticky head and Stamp dock (CSS scroll-margin sets the gap). Not
   // block: 'nearest': Chromium skips scroll-margin for a row already in the viewport, i.e. under the head.
   // Also on doc changes: stamping the last line keeps it selected but adds its tools, so the row grows.
+  // The rows' scroll-margin clears the sticky head by its height, measured now (fonts, waveform, wrapping vary).
   const list = useRef<HTMLOListElement>(null);
+  const head = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const el = head.current!;
+    el.parentElement!.style.setProperty('--lyrics-head-h', `${el.offsetHeight}px`);
     const row = list.current?.querySelector('[aria-current]');
-    const ed = row?.closest('.lyrics-editor');
-    if (!row?.scrollIntoView || !ed) return;
+    if (!row?.scrollIntoView) return;
     const r = row.getBoundingClientRect();
-    const top = Math.max(0, ed.querySelector('.lyrics-editor-head')!.getBoundingClientRect().bottom);
-    const bottom = Math.min(innerHeight, ed.querySelector('.lyrics-editor-dock')!.getBoundingClientRect().top);
+    const top = Math.max(0, el.getBoundingClientRect().bottom);
+    const bottom = Math.min(innerHeight, el.parentElement!.querySelector('.lyrics-editor-dock')!.getBoundingClientRect().top);
     if (r.top < top) row.scrollIntoView({ block: 'start' });
     else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? 'start' : 'end' }); // too tall: top
   }, [s.sel, s.step, lines]);
@@ -289,7 +292,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   return (
     <div className="lyrics-editor">
       {/* Sticky: the step tabs, and while syncing the waveform, so it stays in view next to the line being fixed. */}
-      <div className="lyrics-editor-head">
+      <div className="lyrics-editor-head" ref={head}>
         <div className="lyrics-editor-tabs" role="tablist" aria-label="Editor steps">
           {STEPS.map(([id, name, note], k) => (
             <button

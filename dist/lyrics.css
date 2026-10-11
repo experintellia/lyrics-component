@@ -392,8 +392,8 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
 .lyrics-editor-row {
   border-bottom: 1px solid rgb(128 128 128 / 0.2); /* reads as a list of tappable rows */
   border-radius: var(--lyrics-radius, 6px);
-  /* clear of the sticky tabs + waveform (~160px) and its fade, and the sticky Stamp dock */
-  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + 174px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
+  /* clear of the sticky tabs + waveform (measured into --lyrics-head-h) and its fade, and the sticky Stamp dock */
+  scroll-margin: calc(var(--lyrics-sticky-top, 0px) + var(--lyrics-head-h, 154px) + 20px) 0 calc(120px + env(safe-area-inset-bottom, 0px));
   border-inline-start: 4px solid transparent; /* the verse's waveform band colour (inline style) */
 }
 
@@ -476,7 +476,7 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
     flex-direction: row;
   }
   .lyrics-editor-row {
-    scroll-margin-top: calc(var(--lyrics-sticky-top, 0px) + 142px);
+    scroll-margin-top: calc(var(--lyrics-sticky-top, 0px) + var(--lyrics-head-h, 122px) + 20px);
   }
   .lyrics-editor-wide {
     display: none; /* "0.5×", not "0.5× speed": the status stays one line */
