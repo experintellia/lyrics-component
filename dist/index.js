@@ -752,8 +752,15 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   }, []);
   const list = useRef(null);
   useEffect(() => {
-    var _a2, _b2, _c;
-    (_c = (_b2 = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]")) == null ? void 0 : _b2.scrollIntoView) == null ? void 0 : _c.call(_b2, { block: "nearest" });
+    var _a2;
+    const row = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]");
+    const ed = row == null ? void 0 : row.closest(".lyrics-editor");
+    if (!(row == null ? void 0 : row.scrollIntoView) || !ed) return;
+    const r = row.getBoundingClientRect();
+    const top = Math.max(0, ed.querySelector(".lyrics-editor-head").getBoundingClientRect().bottom);
+    const bottom = Math.min(innerHeight, ed.querySelector(".lyrics-editor-dock").getBoundingClientRect().top);
+    if (r.top < top) row.scrollIntoView({ block: "start" });
+    else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? "start" : "end" });
   }, [s.sel, s.step, lines]);
   const rows = useMemo(() => {
     const band = new Array(lines.length);
