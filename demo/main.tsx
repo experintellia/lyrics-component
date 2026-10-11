@@ -117,7 +117,7 @@ function App() {
     a.download = lrcName;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 40_000); // iOS asks "Download?" first; the URL must outlive that
-    setSaved(lrc);
+    setSaved(lrc); // ponytail: a link can't tell if that prompt was cancelled; Share can
     toggleSaveMenu(false);
   };
   const share = () => {
@@ -181,7 +181,7 @@ function App() {
             Save .lrc ▾
             {dirty && stamped > 0 && <small>unsaved changes</small>}
           </button>
-          {saveMenu && (
+          {saveMenu && stamped > 0 && ( // hidden too once Save is disabled (e.g. a plain .txt loaded meanwhile)
             <div className="demo-more-panel">
               <button type="button" onClick={download}>
                 {icon('M12 3v12m-5-5 5 5 5-5M5 21h14')} Download {lrcName}

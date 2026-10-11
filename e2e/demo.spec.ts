@@ -146,6 +146,11 @@ test('Save menu: Share… sends the .lrc (cancelling keeps "unsaved changes"); C
   await save.click();
   await share.click();
   await expect(save).not.toContainText('unsaved changes');
+
+  await save.click();
+  await loadLyrics(page, 'plain.txt', 'no timing yet'); // nothing synced: Save is disabled, its menu goes too
+  await expect(save).toBeDisabled();
+  await expect(share).toBeHidden();
 });
 
 test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth scroll under reduced motion', async ({ page }) => {

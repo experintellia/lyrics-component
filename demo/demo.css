@@ -113,7 +113,7 @@ summary {
 .demo-tabs {
   position: sticky; /* Preview and Save stay in reach while the lyric list scrolls */
   top: 0;
-  z-index: 2;
+  z-index: 3; /* above the transport (2), so the Save and ⚙ dropdowns open over it */
   box-sizing: border-box;
   height: var(--demo-nav-h); /* fixed: the editor's sticky tabs sit right below it */
   display: flex;
@@ -185,7 +185,6 @@ summary {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  z-index: 3; /* over the editor's sticky head and the transport, even where the Preview/Edit bar isn't sticky */
 }
 .demo-save .demo-more-panel button {
   display: flex;
