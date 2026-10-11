@@ -379,7 +379,9 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
 
 .lyrics-editor-lines {
   list-style: none;
-  margin: 0;
+  /* A row scrolled into view lands ~20px below the sticky head (its scroll-margin clears the fade), so that
+     band above line 1 must be blank, not the tip's last line peeking out half-faded. */
+  margin: 16px 0 0;
   padding: 0;
 }
 
