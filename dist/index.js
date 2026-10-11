@@ -698,13 +698,20 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   }, [s.draft]);
   const latest = useRef(s);
   latest.current = s;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const flush = () => {
       const c = reducer(latest.current, { t: "commit" });
       if (c !== latest.current) emit(c.doc);
-    },
-    []
-  );
+    };
+    const onHide = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onHide);
+      flush();
+    };
+  }, []);
   const caretFromEnd = useRef(null);
   const textRef = useRef(null);
   useLayoutEffect(() => {

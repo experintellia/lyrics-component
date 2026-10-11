@@ -131,8 +131,8 @@ interface LyricsProps {
 - **Offset:** `offsetMs` is latency in wall time, so at playback rate `r` highlighting and stamping
   use `position − offsetMs × r` and seeks request `lineTime + offsetMs × r`. `offsetMs` is never
   written to the LRC.
-- **onChange** fires immediately for stamps, nudges, clears and undo, and for text after blur or
-  500 ms idle. Store the result wherever you like; passing it back as `lrc` does not reset the
+- **onChange** fires immediately for stamps, nudges, clears and undo, and for text after blur,
+  500 ms idle, unmount, `pagehide` or the tab going hidden. Store the result wherever you like; passing it back as `lrc` does not reset the
   editor.
 - **Peaks** are optional (the editor falls back to a plain time ruler). Browser hosts can use
   `peaksFromAudio(blobOrArrayBuffer)`, which rejects if the engine can't decode the file.
