@@ -102,7 +102,7 @@ test('key states', async ({ page }) => {
 
   await page.getByRole('tab', { name: 'Sync words' }).click();
   await page.getByRole('button', { name: /Carry me home on the evening tide/ }).click();
-  for (const t of [8, 8.3, 8.6]) {
+  for (const t of [8.3, 8.6]) { // "Carry" (word 0) is timed by the line stamp, 8.00
     await seek(page, t);
     await stamp.click();
   }

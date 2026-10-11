@@ -818,7 +818,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     banner = /* @__PURE__ */ jsxs(Fragment, { children: [
       "Optional, for word-by-word highlighting. Tap a line, press play, then tap ",
       /* @__PURE__ */ jsx("b", { children: "Stamp" }),
-      " as each highlighted word starts. The line loops until you're done; after its last word, the next line comes up."
+      " as each highlighted word starts. The line loops until you're done; after its last word, the next line plays from its start (its first word is timed by the line stamp)."
     ] });
   else if (allSynced)
     banner = /* @__PURE__ */ jsx(Fragment, { children: "All lines are synced ✓ Play it back to check. Tap a line to fix it, or time single words in step 3 (optional)." });
@@ -1039,7 +1039,7 @@ function WordTools({ line, word, dispatch, seek }) {
       },
       k
     )) }),
-    /* @__PURE__ */ jsx("p", { className: "lyrics-editor-tip", children: !ws.length ? "No words on this line." : `${word < ws.length ? "Tap Stamp as the blue word starts. After the last word, the next line opens." : "All words timed."} Tap a timed word to hear it; Stamp then re-times it.` }),
+    /* @__PURE__ */ jsx("p", { className: "lyrics-editor-tip", children: !ws.length ? "No words on this line." : `${word < ws.length ? "Tap Stamp as the blue word starts. After the last word, the next line plays from its start." : "All words timed."} Tap a timed word to hear it; Stamp then re-times it.` }),
     (sel == null ? void 0 : sel.timeMs) != null && /* @__PURE__ */ jsx(Nudges, { dispatch }),
     /* @__PURE__ */ jsx(PlayHere, { ms: (sel == null ? void 0 : sel.timeMs) ?? line.timeMs, seek, label: (sel == null ? void 0 : sel.timeMs) != null ? `from “${sel.text.trim()}”` : "line" }),
     /* @__PURE__ */ jsx("button", { type: "button", onClick: () => dispatch({ t: "move", d: 1 }), children: "Next line →" }),

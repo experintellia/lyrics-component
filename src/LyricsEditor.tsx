@@ -241,7 +241,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     banner = (
       <>
         Optional, for word-by-word highlighting. Tap a line, press play, then tap <b>Stamp</b> as each highlighted
-        word starts. The line loops until you're done; after its last word, the next line comes up.
+        word starts. The line loops until you're done; after its last word, the next line plays from its start (its first word is timed by the line stamp).
       </>
     );
   else if (allSynced)
@@ -493,7 +493,7 @@ function WordTools({ line, word, dispatch, seek }: ToolProps & { word: number })
       <p className="lyrics-editor-tip">
         {!ws.length
           ? 'No words on this line.'
-          : `${word < ws.length ? 'Tap Stamp as the blue word starts. After the last word, the next line opens.' : 'All words timed.'} Tap a timed word to hear it; Stamp then re-times it.`}
+          : `${word < ws.length ? 'Tap Stamp as the blue word starts. After the last word, the next line plays from its start.' : 'All words timed.'} Tap a timed word to hear it; Stamp then re-times it.`}
       </p>
       {sel?.timeMs != null && <Nudges dispatch={dispatch} />}
       {/* Names its target: the selected word if timed, else the line start. */}
