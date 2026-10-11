@@ -1,6 +1,6 @@
 import { jsx, jsxs, Fragment } from "react/jsx-runtime";
 import { useRef, useState, useLayoutEffect, useEffect, useMemo, memo, Fragment as Fragment$1, useReducer } from "react";
-import { parseLrc, lineWords, displayText, setLineTime, joinWords, formatTime, serializeLrc } from "./lrc.js";
+import { parseLrc, lineWords, displayText, setLineTime, joinWords, sections, lineSpan, formatTime, serializeLrc } from "./lrc.js";
 const SNAP_MS = 300;
 const CAP_MS = 500;
 const SEEK_HOLD_MS = 1e3;
@@ -318,10 +318,13 @@ function reducer(s, a) {
       return i === s.sel ? s : { ...s, sel: i, word: a.d > 0 ? 0 : Math.max(0, words(lines[i]).length - 1) };
     }
     case "nudge": {
-      if (s.step !== "words") return (line == null ? void 0 : line.timeMs) != null ? put(setLineTime(line, Math.max(0, line.timeMs + a.d))) : s;
+      if (s.step !== "words") {
+        const t2 = (line == null ? void 0 : line.timeMs) ?? null;
+        return t2 === null || Math.max(0, t2 + a.d) === t2 ? s : put(setLineTime(line, Math.max(0, t2 + a.d)));
+      }
       const ws = line ? lineWords(line.text) : [];
       const t = ((_a = ws[s.word]) == null ? void 0 : _a.text) ? ws[s.word].timeMs : null;
-      if (t === null) return s;
+      if (t === null || Math.max(0, t + a.d) === t) return s;
       ws[s.word] = { ...ws[s.word], timeMs: Math.max(0, t + a.d) };
       return put({ timeMs: s.word === 0 ? ws[0].timeMs : line.timeMs, text: joinWords(ws) });
     }
@@ -346,34 +349,6 @@ const bandColor = (k) => {
   const [v, hue] = section(k);
   return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
 };
-const LABEL = /^\[.+\]$/;
-const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
-const stampFrom = (lines, i, end) => {
-  var _a;
-  return ((_a = lines.slice(i).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs) ?? end;
-};
-function sections(lines, durationMs = Infinity) {
-  var _a;
-  const out = [];
-  for (let i = 0; i < lines.length; ) {
-    if (!displayText(lines[i].text)) {
-      i++;
-      continue;
-    }
-    let j = i + 1;
-    while (j < lines.length && displayText(lines[j].text) && !isLabel(lines[j])) j++;
-    const start = (_a = lines.slice(i, j).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs;
-    const label = isLabel(lines[i]) ? displayText(lines[i].text).slice(1, -1) : "";
-    if (start != null) out.push({ startMs: start, endMs: Math.max(start, stampFrom(lines, j, durationMs)), label, from: i, to: j });
-    i = j;
-  }
-  return out;
-}
-function lineSpan(lines, i, durationMs = Infinity) {
-  var _a;
-  const t = (_a = lines[i]) == null ? void 0 : _a.timeMs;
-  return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];
-}
 const FIT_MARGIN = 500;
 const FIT_MAX = 15e3;
 function viewWindow(centreMs, spanMs, fit, widen = 1) {
@@ -698,13 +673,20 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   }, [s.draft]);
   const latest = useRef(s);
   latest.current = s;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const flush = () => {
       const c = reducer(latest.current, { t: "commit" });
       if (c !== latest.current) emit(c.doc);
-    },
-    []
-  );
+    };
+    const onHide = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onHide);
+      flush();
+    };
+  }, []);
   const caretFromEnd = useRef(null);
   const textRef = useRef(null);
   useLayoutEffect(() => {
@@ -731,6 +713,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: "stampWord", ms } : { t: "stamp", ms });
+  const backS = Math.round(50 * (position.rate ?? 1)) / 10;
   const textLines = lines.filter(hasText);
   const lineNo = lines.slice(0, s.sel + 1).filter(hasText).length;
   const wordsDone = textLines.filter((l) => timedWords(l) === words(l).length).length;
@@ -758,6 +741,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     else if (s.step === "lyrics" || mod || e.altKey) return;
     else if (k === "s" || k === "enter") !e.repeat && stamp();
     else if (k === "arrowup" || k === "arrowdown") dispatch({ t: wordStep ? "moveWord" : "move", d: k === "arrowup" ? -1 : 1 });
+    else if (k === "arrowleft" || k === "arrowright") dispatch({ t: "nudge", d: (k === "arrowleft" ? -1 : 1) * (e.shiftKey ? 100 : 10) });
     else return;
     e.preventDefault();
   };
@@ -769,10 +753,16 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   const list = useRef(null);
   const head = useRef(null);
   useEffect(() => {
-    var _a2, _b2, _c;
+    var _a2;
     const el = head.current;
     el.parentElement.style.setProperty("--lyrics-head-h", `${el.offsetHeight}px`);
-    (_c = (_b2 = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]")) == null ? void 0 : _b2.scrollIntoView) == null ? void 0 : _c.call(_b2, { block: "nearest" });
+    const row = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]");
+    if (!(row == null ? void 0 : row.scrollIntoView)) return;
+    const r = row.getBoundingClientRect();
+    const top = Math.max(0, el.getBoundingClientRect().bottom);
+    const bottom = Math.min(innerHeight, el.parentElement.querySelector(".lyrics-editor-dock").getBoundingClientRect().top);
+    if (r.top < top) row.scrollIntoView({ block: "start" });
+    else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? "start" : "end" });
   }, [s.sel, s.step, lines]);
   const rows = useMemo(() => {
     const band = new Array(lines.length);
@@ -914,6 +904,21 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
       ),
       /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-dock", children: [
         /* @__PURE__ */ jsx("p", { className: "lyrics-editor-progress", children: s.draft.trim() ? `${s.draft.split("\n").filter((r) => r.trim()).length} lines${synced ? ` · ${synced} timed` : ""}` : dur ? "Type or paste at least one line to continue." : "Load the song and add at least one line to continue." }),
+        /* @__PURE__ */ jsxs(
+          "button",
+          {
+            type: "button",
+            "aria-label": `Back ${backS} s`,
+            disabled: !dur,
+            onPointerDown: (e) => e.preventDefault(),
+            onClick: () => seek(Math.max(0, audibleMs - backS * 1e3)),
+            children: [
+              "↺ ",
+              backS,
+              " s"
+            ]
+          }
+        ),
         undoRedo,
         /* @__PURE__ */ jsx(
           "button",
@@ -934,7 +939,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           " ",
           "Keys: S or Enter = Stamp · ↑/↓ = choose ",
           wordStep ? "word" : "line",
-          " · Ctrl/⌘+Z = undo. Shortcuts work anywhere except while typing."
+          " · ←/→ = nudge 0.01 s (Shift: 0.1 s) · Ctrl/⌘+Z = undo. Shortcuts work anywhere except while typing."
         ] })
       ] }),
       textLines.length ? /* @__PURE__ */ jsx("ol", { ref: list, className: "lyrics-editor-lines", children: rows }) : /* @__PURE__ */ jsx("button", { type: "button", className: "lyrics-editor-primary", onClick: () => dispatch({ t: "step", step: "lyrics" }), children: "← Add lyrics" }),

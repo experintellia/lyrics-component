@@ -428,6 +428,13 @@
   font-size: 1.2em;
 }
 
+/* Short screens: a 52px Stamp, like the primary buttons, leaves room for the selected line and the next. */
+@media (max-height: 640px) {
+  .lyrics-editor .lyrics-editor-stamp {
+    min-height: 52px;
+  }
+}
+
 /* Paused: Stamp steps back (outlined) so the eye goes to the host's Play first. */
 .lyrics-editor .lyrics-editor-stamp[data-paused] {
   color: var(--lyrics-accent, #2a7ae2);

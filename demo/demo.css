@@ -111,9 +111,9 @@ summary {
 }
 
 .demo-tabs {
-  position: sticky; /* Preview and Download stay in reach while the lyric list scrolls */
+  position: sticky; /* Preview and Save stay in reach while the lyric list scrolls */
   top: 0;
-  z-index: 2;
+  z-index: 3; /* above the transport (2), so the Save and ⚙ dropdowns open over it */
   box-sizing: border-box;
   height: var(--demo-nav-h); /* fixed: the editor's sticky tabs sit right below it */
   display: flex;
@@ -143,7 +143,8 @@ summary {
   background: var(--lyrics-accent);
   font-weight: bold;
 }
-.demo-tabs > button,
+.demo-download,
+.demo-more-panel button,
 .demo-cta button,
 .demo-play {
   min-height: 44px;
@@ -154,7 +155,8 @@ summary {
   background: transparent;
   cursor: pointer;
 }
-.demo-tabs > button:disabled {
+.demo-download:disabled,
+.demo-more-panel button:disabled {
   border-color: #888;
   color: #767676;
   cursor: default;
@@ -175,8 +177,25 @@ summary {
 .demo-cta button {
   font-weight: bold;
 }
-.demo-more {
+.demo-more,
+.demo-save {
   position: relative;
+}
+/* Save menu: one full-width item per row, icon before the label. */
+.demo-save .demo-more-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.demo-save .demo-more-panel button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.demo-save svg {
+  flex-shrink: 0;
 }
 .demo-more summary {
   display: block; /* no ▶ marker: next to the audio it would read as "play" */
@@ -222,6 +241,28 @@ summary {
 .demo-more small {
   display: block;
 }
+.demo-drafts {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.demo-drafts li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+.demo-drafts span {
+  flex: 1;
+}
+.demo-drafts button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
 
 .demo-view {
   flex: 1 1 0; /* LyricsView scrolls inside a host-sized box: here, everything down to the player */
@@ -257,6 +298,17 @@ summary {
 }
 .demo-cta button {
   min-height: 52px;
+}
+.demo-actions {
+  display: flex;
+  gap: 8px;
+}
+.demo-actions button {
+  flex: 1;
+}
+.demo-cta button + button {
+  color: var(--lyrics-accent);
+  background: transparent;
 }
 .demo-empty {
   color: #767676;
@@ -350,4 +402,15 @@ summary {
 }
 #root:has(.demo-transport:not([hidden])) .lyrics-editor-row {
   scroll-margin-bottom: calc(120px + var(--demo-transport-h));
+}
+/* Short screens (iPhone SE/mini with Safari's bars): the Preview/Edit bar scrolls away instead of sticking, so the
+   editor's tabs stick to the top and the line list gets its 61px. Relative, not static: z-index keeps it (and its
+   dropdowns) above the editor. ponytail: phones in landscape (~320px) stay cramped; they'd need the head to shrink. */
+@media (max-height: 640px) {
+  :root {
+    --lyrics-sticky-top: 0px;
+  }
+  .demo-tabs {
+    position: relative;
+  }
 }

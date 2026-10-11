@@ -16,6 +16,10 @@
       "types": "./dist/lrc.d.ts",
       "import": "./dist/lrc.js"
     },
+    "./ttml": {
+      "types": "./dist/ttml.d.ts",
+      "import": "./dist/ttml.js"
+    },
     "./style.css": "./dist/lyrics.css"
   },
   "types": "./dist/index.d.ts",
