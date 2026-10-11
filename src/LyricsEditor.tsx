@@ -173,6 +173,16 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     list.current?.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest' });
   }, [s.sel, s.step, lines]);
 
+  // The rows' scroll-margin clears the sticky head by its measured height (fonts, waveform, wrapping vary).
+  const head = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = head.current!;
+    if (typeof ResizeObserver === 'undefined') return; // CSS falls back to typical heights
+    const ro = new ResizeObserver(() => el.parentElement!.style.setProperty('--lyrics-head-h', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // The editor re-renders every animation frame while playing; the list only when its inputs change.
   const rows = useMemo(() => {
     // Each verse's rows get its waveform band's colour as a left edge, so bands map to verses.
@@ -268,7 +278,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   return (
     <div className="lyrics-editor">
       {/* Sticky: the step tabs, and while syncing the waveform, so it stays in view next to the line being fixed. */}
-      <div className="lyrics-editor-head">
+      <div className="lyrics-editor-head" ref={head}>
         <div className="lyrics-editor-tabs" role="tablist" aria-label="Editor steps">
           {STEPS.map(([id, name, note], k) => (
             <button

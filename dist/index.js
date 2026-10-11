@@ -771,6 +771,14 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     var _a2, _b2, _c;
     (_c = (_b2 = (_a2 = list.current) == null ? void 0 : _a2.querySelector("[aria-current]")) == null ? void 0 : _b2.scrollIntoView) == null ? void 0 : _c.call(_b2, { block: "nearest" });
   }, [s.sel, s.step, lines]);
+  const head = useRef(null);
+  useEffect(() => {
+    const el = head.current;
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => el.parentElement.style.setProperty("--lyrics-head-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const rows = useMemo(() => {
     const band = new Array(lines.length);
     sections(lines).forEach((sec, k) => band.fill(k, sec.from, sec.to));
@@ -841,7 +849,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     ] });
   const progress = !textLines.length ? "" : wordStep ? `${loop ? "↻ " : ""}Line ${lineNo}${!ws.length ? "" : s.word < ws.length ? `: word ${s.word + 1} of ${ws.length}` : ": all words timed ✓"}` : allSynced ? line ? `All ${textLines.length} lines synced ✓` : "" : `${synced} of ${textLines.length} lines synced`;
   return /* @__PURE__ */ jsxs("div", { className: "lyrics-editor", children: [
-    /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-head", children: [
+    /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-head", ref: head, children: [
       /* @__PURE__ */ jsx("div", { className: "lyrics-editor-tabs", role: "tablist", "aria-label": "Editor steps", children: STEPS.map(([id, name, note], k) => /* @__PURE__ */ jsxs(
         "button",
         {
