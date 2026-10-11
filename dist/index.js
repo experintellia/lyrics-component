@@ -318,10 +318,13 @@ function reducer(s, a) {
       return i === s.sel ? s : { ...s, sel: i, word: a.d > 0 ? 0 : Math.max(0, words(lines[i]).length - 1) };
     }
     case "nudge": {
-      if (s.step !== "words") return (line == null ? void 0 : line.timeMs) != null ? put(setLineTime(line, Math.max(0, line.timeMs + a.d))) : s;
+      if (s.step !== "words") {
+        const t2 = (line == null ? void 0 : line.timeMs) ?? null;
+        return t2 === null || Math.max(0, t2 + a.d) === t2 ? s : put(setLineTime(line, Math.max(0, t2 + a.d)));
+      }
       const ws = line ? lineWords(line.text) : [];
       const t = ((_a = ws[s.word]) == null ? void 0 : _a.text) ? ws[s.word].timeMs : null;
-      if (t === null) return s;
+      if (t === null || Math.max(0, t + a.d) === t) return s;
       ws[s.word] = { ...ws[s.word], timeMs: Math.max(0, t + a.d) };
       return put({ timeMs: s.word === 0 ? ws[0].timeMs : line.timeMs, text: joinWords(ws) });
     }

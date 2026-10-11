@@ -255,7 +255,8 @@ describe('Sync lines', () => {
     const slider = container.appendChild(document.createElement('input'));
     slider.type = 'range';
     key('ArrowLeft', { shiftKey: true }, slider);
-    expect(lastLrc()).toBe('[00:00.91]<00:01.41>a\n');  });
+    expect(lastLrc()).toBe('[00:00.91]<00:01.41>a\n');
+  });
 
   it('undo/redo: one step per stamp/nudge/clear, via buttons and shortcuts', () => {
     render();
