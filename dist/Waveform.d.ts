@@ -1,7 +1,8 @@
 import { type LrcLine } from './lrc';
 import type { Peaks } from './types';
-/** Section k's colour; the editor's line list uses it (stronger) to tie each verse to its band. */
-export declare const bandColor: (k: number, alpha?: number) => string;
+/** Section k's colour for the editor's line list (ties each verse to its band): a host's as given, else the
+ * default hue, stronger than its band. */
+export declare const bandColor: (k: number) => string;
 /** `from`/`to`: the section's line indices [from, to). */
 export interface Section {
     startMs: number;
