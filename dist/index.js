@@ -901,6 +901,17 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
       ),
       /* @__PURE__ */ jsxs("div", { className: "lyrics-editor-dock", children: [
         /* @__PURE__ */ jsx("p", { className: "lyrics-editor-progress", children: s.draft.trim() ? `${s.draft.split("\n").filter((r) => r.trim()).length} lines${synced ? ` · ${synced} timed` : ""}` : dur ? "Type or paste at least one line to continue." : "Load the song and add at least one line to continue." }),
+        /* @__PURE__ */ jsx(
+          "button",
+          {
+            type: "button",
+            "aria-label": "Back 5 seconds",
+            disabled: !dur,
+            onPointerDown: (e) => e.preventDefault(),
+            onClick: () => seek(Math.max(0, audibleMs - 5e3)),
+            children: "↺ 5 s"
+          }
+        ),
         undoRedo,
         /* @__PURE__ */ jsx(
           "button",

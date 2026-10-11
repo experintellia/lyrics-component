@@ -324,6 +324,25 @@ describe('Sync lines', () => {
     expect(rows().map((r) => r.hasAttribute('data-late'))).toEqual([false, false]);
   });
 
+  it('Lyrics step: ↺ 5 s seeks back 5 s (clamped at 0, + offsetMs) without taking focus; off with no song', () => {
+    render({ position: pos(12_000), offsetMs: 200 });
+    click(tab('Lyrics'));
+    const back = $$('button').find((b) => b.ariaLabel === 'Back 5 seconds')!;
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(7_000); // audible 11.8 s − 5 s, + 200 ms
+    const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
+    act(() => void back.dispatchEvent(ev));
+    expect(ev.defaultPrevented).toBe(true);
+    render({ position: pos(7_000) }); // the host lands
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(2_000);
+    render({ position: pos(2_000) });
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(200); // audible 0 + offsetMs
+    render({ position: pos(0, 0) });
+    expect(back.hasAttribute('disabled')).toBe(true);
+  });
+
   it('stamp button prevents default on pointerdown (keeps focus / no iOS keyboard)', () => {
     render();
     const ev = new Event('pointerdown', { bubbles: true, cancelable: true });

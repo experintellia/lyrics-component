@@ -338,6 +338,16 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
                   ? 'Type or paste at least one line to continue.'
                   : 'Load the song and add at least one line to continue.'}
             </p>
+            {/* Transcribing: hear the last bit again. preventDefault keeps the caret in the box (no blur, no iOS keyboard hide). */}
+            <button
+              type="button"
+              aria-label="Back 5 seconds"
+              disabled={!dur}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => seek(Math.max(0, audibleMs - 5_000))}
+            >
+              ↺ 5 s
+            </button>
             {undoRedo}
             <button
               type="button"
