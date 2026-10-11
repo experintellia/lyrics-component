@@ -17,8 +17,9 @@ async function downloadText(page: Page) {
     const create = URL.createObjectURL;
     URL.createObjectURL = (o) => ((document.body.dataset.blobType = (o as Blob).type), create(o));
   });
+  await page.getByRole('button', { name: /^Save \.lrc/ }).click();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: /Download/ }).click();
+  await page.getByRole('button', { name: /^Download / }).click();
   const file = await download;
   // octet-stream: with text/plain, iOS Safari can open the file in place of the page and lose the edits.
   expect(await page.evaluate(() => document.body.dataset.blobType)).toBe('application/octet-stream');
@@ -39,7 +40,7 @@ test('empty state: audio and optional lyrics pickers; type lyrics, then Next goe
   await expect(page.locator('.lyrics-editor-text')).toHaveText(['One', 'Two', 'Three']);
   await expect(page.getByText('0 of 3 lines synced')).toBeVisible();
   await expect(page.locator('.demo-file label').nth(1)).toContainText('3 typed lines'); // no "no file chosen" contradiction
-  await expect(page.getByRole('button', { name: /Download/ })).toBeDisabled(); // nothing synced yet
+  await expect(page.getByRole('button', { name: /^Save \.lrc/ })).toBeDisabled(); // nothing synced yet
 });
 
 test('view highlights the current line and click seeks the audio', async ({ page }) => {
@@ -80,7 +81,7 @@ test('full flow: plain text → sync every line → sync words → preview highl
   await page.getByRole('button', { name: '❚❚ Pause' }).click();
   await expect(page.getByRole('status')).toContainText('All 4 lines synced ✓'); // done card replaces Stamp
   await expect(stamp).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Download/ })).toHaveAttribute('data-primary', 'true'); // done: download is the next step
+  await expect(page.getByRole('button', { name: /^Save \.lrc/ })).toHaveAttribute('data-primary', 'true'); // done: saving is the next step
   await expect(page.locator('.lyrics-editor-time', { hasText: '—' })).toHaveCount(0);
 
   // Word timing on line 2 (paused; seek, then stamp each word).
@@ -112,29 +113,38 @@ test('full flow: plain text → sync every line → sync words → preview highl
   expect(text).toMatch(/^\[00:01\.50\]<00:01\.50>Second <00:01\.70>line <00:01\.90>here\n\n\[/m); // stanza break kept
 });
 
-test('phone: Download opens the share sheet with the .lrc; cancelling it keeps "unsaved changes"', async ({ page }) => {
-  // Stub a touch phone with a share sheet; the test sets data-cancel to cancel it.
+test('Save menu: Share… sends the .lrc (cancelling keeps "unsaved changes"); Copy puts the LRC on the clipboard', async ({ page }) => {
+  // Stub file sharing (the test sets data-cancel to cancel the sheet) and the clipboard.
   await page.addInitScript(() => {
-    const mm = window.matchMedia.bind(window);
-    window.matchMedia = (q) => (q === '(pointer: coarse)' ? ({ matches: true } as MediaQueryList) : mm(q));
     navigator.canShare = () => true;
     navigator.share = async (data) => {
       const f = data!.files![0];
       document.body.dataset.shared = `${f.name} ${f.type}`;
       if (document.body.dataset.cancel) throw new DOMException('Share canceled', 'AbortError');
     };
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => void (document.body.dataset.copied = t) } });
   });
   await load(page);
   await page.getByRole('tab', { name: 'Edit' }).click();
   await page.getByRole('button', { name: /^Re-stamp/ }).click();
-  const save = page.getByRole('button', { name: /Download/ });
+  const save = page.getByRole('button', { name: /^Save \.lrc/ });
+  const share = page.getByRole('button', { name: /^Share…/ });
   await expect(save).toContainText('unsaved changes');
-  await page.evaluate(() => (document.body.dataset.cancel = '1'));
+
   await save.click();
+  await page.getByRole('button', { name: 'Copy the LRC text' }).click();
+  await expect(page.getByRole('button', { name: 'Copied ✓' })).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-copied', /^\[ti:Tone\]\n\[00:00\.00\]First line\n/);
+  await expect(save).toContainText('unsaved changes'); // the clipboard isn't a save
+
+  await page.evaluate(() => (document.body.dataset.cancel = '1'));
+  await share.click();
   await expect(page.locator('body')).toHaveAttribute('data-shared', 'song.lrc application/octet-stream');
+  await expect(share).toBeHidden(); // a choice closes the menu
   await expect(save).toContainText('unsaved changes'); // cancelled: still unsaved
   await page.evaluate(() => delete document.body.dataset.cancel);
   await save.click();
+  await share.click();
   await expect(save).not.toContainText('unsaved changes');
 });
 
@@ -194,7 +204,7 @@ test('S stamps while a tab button has focus; unsaved edits trigger the beforeunl
   await page.getByRole('tab', { name: 'Edit' }).focus();
   await page.keyboard.press('s');
   await expect(page.locator('.lyrics-editor-time').first()).toHaveText('00:00.00');
-  await expect(page.getByRole('button', { name: /Download/ })).toContainText('unsaved changes'); // dirty
+  await expect(page.getByRole('button', { name: /^Save \.lrc/ })).toContainText('unsaved changes'); // dirty
 
   const dialog = new Promise<string>((resolve) => page.once('dialog', (d) => (resolve(d.type()), d.dismiss())));
   await page.close({ runBeforeUnload: true });

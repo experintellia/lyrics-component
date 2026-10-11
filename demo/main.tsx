@@ -12,6 +12,12 @@ declare const __COMMIT__: { hash: string; subject: string };
 const OFFSET_KEY = 'lyrics-demo-offset';
 const isPlain = (lrc: string) => parseLrc(lrc).lines.every((l) => l.timeMs === null);
 const clock = (ms: number) => formatTime(ms).slice(0, 5); // mm:ss
+// octet-stream, not text/plain: a type the browser can't display is always saved. With text/plain, iOS Safari may
+// offer "View" or ignore `download` and open the text in this tab (dropping the page and its edits), and it saves
+// it as .lrc.txt.
+const lrcFile = (text: string, name: string) => new File([text], name, { type: 'application/octet-stream' });
+// Share… only where files can be shared (iOS/macOS Safari; Android Chrome won't share .lrc).
+const canShareLrc = !!navigator.canShare?.({ files: [lrcFile('', 'x.lrc')] });
 
 function App() {
   const audio = useRef<HTMLAudioElement>(null);
@@ -24,6 +30,8 @@ function App() {
   const [saved, setSaved] = useState(''); // what's on disk (loaded or downloaded); differs = unsaved edits
   const [loads, setLoads] = useState(0); // lyrics files loaded; part of the editor key
   const [tab, setTab] = useState<'preview' | 'edit'>('edit'); // no lyrics yet: edit
+  const [saveMenu, setSaveMenu] = useState(false);
+  const [copied, setCopied] = useState(''); // Copy's result, shown on the button until the menu closes
   const [offsetMs, setOffsetMs] = useState(() => Number(localStorage.getItem(OFFSET_KEY)) || 0);
   const dirty = lrc !== saved;
   const lines = useMemo(() => parseLrc(lrc).lines.filter((l) => displayText(l.text)), [lrc]);
@@ -89,25 +97,27 @@ function App() {
     setTab(isPlain(text) ? 'edit' : 'preview'); // plain text needs syncing first
   };
 
+  // Save menu: Download, Share… (the share sheet never leaves the page and resolves only once the file went
+  // somewhere, so cancelling keeps "unsaved changes"), Copy (the clipboard isn't a save: still unsaved).
+  const lrcName = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + '.lrc';
+  const toggleSaveMenu = (open: boolean) => {
+    setSaveMenu(open);
+    setCopied('');
+  };
   const download = () => {
-    const name = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + '.lrc';
-    // octet-stream, not text/plain: a type the browser can't display is always saved. With text/plain, iOS Safari
-    // may offer "View" or ignore `download` and open the text in this tab (dropping the page and its edits), and it
-    // saves it as .lrc.txt.
-    const f = new File([lrc], name, { type: 'application/octet-stream' });
-    // Phones: the share sheet ("Save to Files" on iOS) never leaves the page, and it resolves only once the file went
-    // somewhere, so cancelling keeps "unsaved changes". Desktop downloads; so does Android (Chrome won't share .lrc).
-    if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [f] })) {
-      navigator.share({ files: [f] }).then(() => setSaved(lrc), (e) => console.warn(e)); // rejected: cancelled
-      return;
-    }
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(f);
-    a.download = name;
+    a.href = URL.createObjectURL(lrcFile(lrc, lrcName));
+    a.download = lrcName;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 40_000); // iOS asks "Download?" first; the URL must outlive that
     setSaved(lrc);
+    toggleSaveMenu(false);
   };
+  const share = () => {
+    navigator.share({ files: [lrcFile(lrc, lrcName)] }).then(() => setSaved(lrc), (e) => console.warn(e)); // rejected: cancelled
+    toggleSaveMenu(false);
+  };
+  const copy = () => navigator.clipboard.writeText(lrc).then(() => setCopied('Copied ✓'), () => setCopied('Copy failed'));
 
   const props = { lrc, position, onSeek, peaks, offsetMs };
   // Typing lyrics doesn't end the empty state: collapsing the header on the textarea's blur would move Next
@@ -149,17 +159,32 @@ function App() {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="demo-download"
-          data-primary={(lines.length > 0 && stamped === lines.length) || undefined}
-          disabled={!stamped}
-          title={stamped ? undefined : 'Sync at least one line first'}
-          onClick={download}
-        >
-          Download .lrc
-          {dirty && stamped > 0 && <small>unsaved changes</small>}
-        </button>
+        {/* ponytail: closes on a choice or a second tap, not on a tap elsewhere (like ⚙). */}
+        <div className="demo-save">
+          <button
+            type="button"
+            className="demo-download"
+            aria-expanded={saveMenu}
+            data-primary={(lines.length > 0 && stamped === lines.length) || undefined}
+            disabled={!stamped}
+            title={stamped ? undefined : 'Sync at least one line first'}
+            onClick={() => toggleSaveMenu(!saveMenu)}
+          >
+            Save .lrc ▾
+            {dirty && stamped > 0 && <small>unsaved changes</small>}
+          </button>
+          {saveMenu && (
+            <div className="demo-more-panel">
+              <button type="button" onClick={download}>Download {lrcName}</button>
+              {canShareLrc && (
+                <button type="button" onClick={share}>
+                  Share… <small>Save to Files, AirDrop, Mail</small>
+                </button>
+              )}
+              {navigator.clipboard && <button type="button" onClick={copy}>{copied || 'Copy the LRC text'}</button>}
+            </div>
+          )}
+        </div>
         {/* ponytail: offset is a rare per-device setting, so it hides behind a disclosure. */}
         <details className="demo-more">
           <summary aria-label="Settings" title="Settings">

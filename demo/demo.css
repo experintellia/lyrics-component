@@ -111,7 +111,7 @@ summary {
 }
 
 .demo-tabs {
-  position: sticky; /* Preview and Download stay in reach while the lyric list scrolls */
+  position: sticky; /* Preview and Save stay in reach while the lyric list scrolls */
   top: 0;
   z-index: 2;
   box-sizing: border-box;
@@ -143,7 +143,8 @@ summary {
   background: var(--lyrics-accent);
   font-weight: bold;
 }
-.demo-tabs > button,
+.demo-download,
+.demo-save .demo-more-panel button,
 .demo-cta button,
 .demo-play {
   min-height: 44px;
@@ -154,7 +155,7 @@ summary {
   background: transparent;
   cursor: pointer;
 }
-.demo-tabs > button:disabled {
+.demo-download:disabled {
   border-color: #888;
   color: #767676;
   cursor: default;
@@ -175,8 +176,25 @@ summary {
 .demo-cta button {
   font-weight: bold;
 }
-.demo-more {
+.demo-more,
+.demo-save {
   position: relative;
+}
+/* Save menu: one full-width item per row; Share's note under its label. */
+.demo-save .demo-more-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 3; /* over the editor's sticky head and the transport, even where the Preview/Edit bar isn't sticky */
+}
+.demo-save .demo-more-panel button {
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.demo-save .demo-more-panel small {
+  display: block;
+  font-size: 12px;
+  color: var(--demo-muted, #595959);
 }
 .demo-more summary {
   display: block; /* no ▶ marker: next to the audio it would read as "play" */
