@@ -124,6 +124,9 @@ The demo pins its `<audio>` controls and the Stamp button at the bottom on small
   the editor."
 - A Preview | Edit tab switch instead of a checkbox. It opens on Edit when there are no lyrics or they
   are plain text.
+- **Drafts** (#1): unsaved lyrics autosave to `localStorage`, one per song, keyed by the audio file's
+  name + size + lastModified (the audio isn't stored). On load: "Restore your lyrics for *song*?";
+  re-picking that file attaches it. Cleared by Download or Discard; listed in ⚙ Settings.
 
 ### Verification
 - e2e: plain text → sync every line → sync words on one line → preview highlights the right line and
@@ -194,7 +197,8 @@ The demo pins its `<audio>` controls and the Stamp button at the bottom on small
      handle these in a capture-phase window listener and `preventDefault` them.
    - Exception: if the focused element `:focus-visible` (reached with the keyboard, via Tab), Enter and
      Space activate it as usual.
-   - Keys: S and Enter stamp, ↑/↓ choose a line (or a word in the word step), Ctrl/⌘+Z undo, Ctrl/⌘+Y
+   - Keys: S and Enter stamp, ↑/↓ choose a line (or a word in the word step), ←/→ nudge it ±10 ms
+     (Shift: ±100 ms; like ↑/↓ they beat a clicked slider's native arrows), Ctrl/⌘+Z undo, Ctrl/⌘+Y
      or Shift+Ctrl/⌘+Z redo. Space plays or pauses in the demo, under the same rule.
    - The hint says "Shortcuts work anywhere except while typing."
    - e2e on both engines covers: after clicking any button or the slider, the keys act as shortcuts;
