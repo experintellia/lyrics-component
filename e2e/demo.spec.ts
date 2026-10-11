@@ -179,16 +179,19 @@ test(`tap-along on a ${width}×${height} phone: the selected line stays clear of
   const transport = (await page.locator('.demo-transport').boundingBox())!;
   for (let i = 0; i < 19; i++) {
     await stamp.click();
-    const sel = (await page.locator('.lyrics-editor-row[aria-current] .lyrics-editor-line').boundingBox())!;
+    // The whole selected row, tools included, stays clear of the sticky head (tabs + waveform) and the Stamp dock.
+    const row = (await page.locator('.lyrics-editor-row[aria-current]').boundingBox())!;
+    const head = (await page.locator('.lyrics-editor-head').boundingBox())!;
+    const dock = (await page.locator('.lyrics-editor-dock').boundingBox())!;
+    expect(row.y, `after stamp ${i + 1}`).toBeGreaterThanOrEqual(head.y + head.height);
+    expect(row.y + row.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(dock.y);
     const btn = (await stamp.boundingBox())!;
-    expect(sel.y + sel.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(btn.y);
     expect(btn.y + btn.height, `after stamp ${i + 1}`).toBeLessThanOrEqual(transport.y);
-    // Step tabs stick right under the Preview/Edit bar (short screen: at the top, the bar scrolled away), and the
-    // selected line stays below them. From stamp 3 on, the list has scrolled the page past the file pickers.
+    // Step tabs stick right under the Preview/Edit bar (short screen: at the top, the bar scrolled away). From
+    // stamp 3 on, the list has scrolled the page past the file pickers.
     const nav = (await page.locator('.demo-tabs').boundingBox())!;
     const tabs = (await page.locator('.lyrics-editor-tabs').boundingBox())!;
     if (i >= 2) expect(Math.abs(tabs.y - (height > 640 ? nav.y + nav.height : 0)), `after stamp ${i + 1}`).toBeLessThan(2);
-    expect(sel.y, `after stamp ${i + 1}`).toBeGreaterThanOrEqual(tabs.y + tabs.height);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); // no sideways scroll
 });
