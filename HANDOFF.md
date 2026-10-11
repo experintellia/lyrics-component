@@ -137,8 +137,8 @@ to windows-1252. GBK/Shift-JIS are out of scope.
   sync modes). The stamp button uses `preventDefault` on `pointerdown` so it
   doesn't steal focus or pop up the iOS keyboard.
 - Undo/redo: one step per stamp, nudge, or clear; typing grouped per line.
-- `onChange`: immediately for stamps/nudges/clears; text after blur or
-  ~500 ms idle. The standalone app adds a `beforeunload` guard.
+- `onChange`: immediately for stamps/nudges/clears; text after blur,
+  ~500 ms idle, unmount, `pagehide` or `visibilitychange` to hidden. The standalone app adds a `beforeunload` guard.
 - Stamps beyond `durationMs` are kept but flagged (`durationMs` may be 0
   while loading — don't flag then).
 

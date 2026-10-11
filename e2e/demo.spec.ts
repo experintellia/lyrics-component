@@ -281,6 +281,20 @@ test(`tap-along on a ${width}×${height} phone: the selected line stays clear of
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width); // no sideways scroll
 });
 
+test('↑ back to line 1: the selected line is scrolled clear of the sticky head', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'l.txt', Array.from({ length: 30 }, (_, i) => `Line number ${i + 1}`).join('\n'));
+  await page.getByRole('button', { name: 'Line number 16' }).click();
+  for (let i = 15; i > 0; i--) {
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('.lyrics-editor-row[aria-current] .lyrics-editor-text')).toHaveText(`Line number ${i}`);
+    const sel = (await page.locator('.lyrics-editor-row[aria-current]').boundingBox())!;
+    const head = (await page.locator('.lyrics-editor-head').boundingBox())!;
+    expect(sel.y, `line ${i}`).toBeGreaterThanOrEqual(head.y + head.height);
+  }
+});
+
 test('waveform: drag left scrubs forward and seeks once on release; a tap still seeks', async ({ page }) => {
   await load(page);
   await page.getByRole('tab', { name: 'Edit' }).click();

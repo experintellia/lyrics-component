@@ -140,6 +140,20 @@ describe('LyricsEditor steps', () => {
     expect(lastLrc()).toBe('typed\n');
     root = createRoot(container);
   });
+
+  it('flushes typed text on pagehide and when the page is hidden, before the idle timeout', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    render({ lrc: '' });
+    type('typed');
+    act(() => void window.dispatchEvent(new Event('pagehide')));
+    expect(lastLrc()).toBe('typed\n');
+    type('typed\nmore');
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    expect(lastLrc()).toBe('typed\nmore\n');
+    act(() => vi.advanceTimersByTime(500)); // the idle commit must not re-emit the flushed text
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Sync lines', () => {
