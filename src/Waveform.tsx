@@ -9,10 +9,11 @@ const DRAG_PX = 4; // less movement than this between press and release is a tap
 const HUES = [30, 150, 290, 60]; // four, so a song's usual 4 stanzas don't repeat a colour
 /** Section k's host colour variable (`--lyrics-section-1`…`4`) and its default hue. */
 const section = (k: number) => [`--lyrics-section-${(k % HUES.length) + 1}`, HUES[k % HUES.length]] as const;
-/** Section k's colour; the editor's line list uses it (stronger) to tie each verse to its band. */
-export const bandColor = (k: number, alpha = 0.2) => {
+/** Section k's colour for the editor's line list (ties each verse to its band): a host's as given, else the
+ * default hue, stronger than its band. */
+export const bandColor = (k: number) => {
   const [v, hue] = section(k);
-  return `color-mix(in srgb, var(${v}, hsl(${hue} 75% 50%)) ${alpha * 100}%, transparent)`;
+  return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
 };
 
 /** `from`/`to`: the section's line indices [from, to). */

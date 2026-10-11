@@ -191,7 +191,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
           className="lyrics-editor-row"
           aria-current={sel || undefined}
           data-late={late || undefined}
-          style={band[i] === undefined ? undefined : { borderInlineStartColor: bandColor(band[i], 0.7) }}
+          style={band[i] === undefined ? undefined : { borderInlineStartColor: bandColor(band[i]) }}
         >
           <button
             type="button"

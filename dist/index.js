@@ -342,9 +342,9 @@ const clampSpan = (ms) => Math.min(6e5, Math.max(1e3, ms));
 const DRAG_PX = 4;
 const HUES = [30, 150, 290, 60];
 const section = (k) => [`--lyrics-section-${k % HUES.length + 1}`, HUES[k % HUES.length]];
-const bandColor = (k, alpha = 0.2) => {
+const bandColor = (k) => {
   const [v, hue] = section(k);
-  return `color-mix(in srgb, var(${v}, hsl(${hue} 75% 50%)) ${alpha * 100}%, transparent)`;
+  return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
 };
 const LABEL = /^\[.+\]$/;
 const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
@@ -787,7 +787,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           className: "lyrics-editor-row",
           "aria-current": sel || void 0,
           "data-late": late || void 0,
-          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i], 0.7) },
+          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i]) },
           children: [
             /* @__PURE__ */ jsxs(
               "button",

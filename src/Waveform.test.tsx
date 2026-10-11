@@ -29,7 +29,7 @@ describe('sections', () => {
 
 describe('bandColor', () => {
   it('uses the host’s --lyrics-section-N (cycling past 4), else the default hue', () => {
-    expect(bandColor(4, 0.7)).toBe('color-mix(in srgb, var(--lyrics-section-1, hsl(30 75% 50%)) 70%, transparent)');
+    expect(bandColor(4)).toBe('var(--lyrics-section-1, hsl(30 75% 50% / 0.7))');
   });
 });
 
