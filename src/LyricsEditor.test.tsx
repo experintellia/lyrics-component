@@ -376,6 +376,13 @@ describe('Sync lines', () => {
     expect(onSeek).toHaveBeenLastCalledWith(7_500);
     render({ position: { ...pos(7_500), rate: 0.75 } });
     expect(back.textContent).toBe('↺ 3.8 s'); // 3.75, rounded for the label
+    render({ position: { ...pos(7_500), rate: 0 } }); // a native player paused at rate 0: counts as 1
+    expect(back.textContent).toBe('↺ 5 s');
+    click(tab('Sync lines'));
+    const status = () => container.querySelector('.lyrics-editor-progress')!.textContent;
+    expect(status()).not.toContain('×'); // paused at rate 0: no "0×"
+    render({ position: { ...pos(7_500), rate: 0.5 } });
+    expect(status()).toContain('0.5×');
   });
 
   it('stamp button prevents default on pointerdown (keeps focus / no iOS keyboard)', () => {

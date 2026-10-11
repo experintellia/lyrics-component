@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LyricsEditor, LyricsView, displayText, formatTime, isShortcut, parseLrc, peaksFromAudio, type Peaks, type Position } from '../src/index';
 // Like a host importing '@experintellia/lyrics/style.css' (src/index.ts has no CSS imports).
@@ -50,6 +50,7 @@ function App() {
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState('');
   const [peaks, setPeaks] = useState<Peaks>();
+  const [noPeaks, setNoPeaks] = useState(false); // decoding failed: say why the waveform is missing
   const [position, setPosition] = useState<Position>({ timeMs: 0, playing: false, durationMs: 0 });
   const [lrc, setLrc] = useState('');
   const [lyricsName, setLyricsName] = useState(''); // loaded lyrics file, '' = typed
@@ -73,13 +74,17 @@ function App() {
   // New audio: fresh object URL and peaks in the background. No peaks = plain ruler.
   useEffect(() => {
     setPeaks(undefined);
+    setNoPeaks(false);
     if (!file) return;
     const u = URL.createObjectURL(file);
     setUrl(u);
     let live = true;
     peaksFromAudio(file).then(
       (p) => live && setPeaks(p),
-      (e) => console.warn(e), // fail softly: the editor works without a waveform
+      (e) => {
+        console.warn(e); // fail softly: the editor works without a waveform
+        if (live) setNoPeaks(true);
+      },
     );
     return () => {
       live = false;
@@ -87,7 +92,9 @@ function App() {
     };
   }, [file]);
 
-  useEffect(() => {
+  // Layout effect: armed in the same commit that shows "unsaved changes", not in a passive effect after the paint,
+  // when closing the tab could already slip through.
+  useLayoutEffect(() => {
     if (!dirty) return;
     const guard = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -175,9 +182,16 @@ function App() {
   // somewhere, so cancelling keeps "unsaved changes"), Copy (the clipboard isn't a save: still unsaved).
   const baseName = file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics';
   const lrcName = baseName + '.lrc';
+  const saveButton = useRef<HTMLButtonElement>(null);
   const toggleSaveMenu = (open: boolean) => {
     setSaveMenu(open);
     setCopied('');
+  };
+  // After a choice or Esc made from inside the menu (keyboard; Safari doesn't focus tapped buttons), focus goes back
+  // to Save instead of dropping to <body> with the closed panel.
+  const closeSaveMenu = () => {
+    toggleSaveMenu(false);
+    if (saveButton.current?.parentElement?.contains(document.activeElement)) saveButton.current.focus();
   };
   const saveFile = (text: string, name: string) => {
     const a = document.createElement('a');
@@ -193,11 +207,11 @@ function App() {
   const download = () => {
     saveFile(lrc, lrcName);
     markSaved(); // ponytail: a link can't tell if iOS's prompt was cancelled; Share can
-    toggleSaveMenu(false);
+    closeSaveMenu();
   };
   const share = () => {
     navigator.share({ files: [octetFile(lrc, lrcName)] }).then(markSaved, (e) => console.warn(e)); // rejected: cancelled
-    toggleSaveMenu(false);
+    closeSaveMenu();
   };
   const copy = () => navigator.clipboard.writeText(lrc).then(() => setCopied('Copied ✓'), () => setCopied('Copy failed'));
   // An export, not a save: TTML can't be loaded back, so the LRC stays "unsaved".
@@ -224,6 +238,7 @@ function App() {
               onChange={(e) => e.target.files?.[0] && pickAudio(e.target.files[0])} />
           </label>
           {fresh && <small>An audio file you own. It stays on this device.</small>}
+          {noPeaks && <small>No waveform: this file couldn't be decoded here (e.g. Lockdown Mode blocks it).</small>}
         </div>
         <div className="demo-file">
           <label>
@@ -244,9 +259,10 @@ function App() {
             </button>
           ))}
         </div>
-        {/* ponytail: closes on a choice or a second tap, not on a tap elsewhere (like ⚙). */}
-        <div className="demo-save">
+        {/* ponytail: closes on a choice, a second tap or Esc, not on a tap elsewhere (like ⚙). */}
+        <div className="demo-save" onKeyDown={(e) => e.key === 'Escape' && saveMenu && closeSaveMenu()}>
           <button
+            ref={saveButton}
             type="button"
             className="demo-download"
             aria-expanded={saveMenu}
@@ -277,7 +293,14 @@ function App() {
           )}
         </div>
         {/* ponytail: offset is a rare per-device setting and TTML a rare export, so they hide behind a disclosure. */}
-        <details className="demo-more">
+        <details
+          className="demo-more"
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape' || !e.currentTarget.open) return;
+            e.currentTarget.open = false;
+            e.currentTarget.querySelector('summary')!.focus();
+          }}
+        >
           <summary aria-label="Settings" title="Settings">
             ⚙<span className="demo-wide"> Settings</span>
           </summary>

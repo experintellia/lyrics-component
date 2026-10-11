@@ -386,9 +386,11 @@ summary {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* Phone preview: both file rows share one line (names hidden; Edit shows them), so the lyrics get the screen. */
+/* Phone preview: both file rows share one line (names and the no-waveform note hidden; Edit shows them), so the
+   lyrics get the screen. */
 @media (max-width: 480px) {
-  .demo-files[data-preview] .demo-file-name {
+  .demo-files[data-preview] .demo-file-name,
+  .demo-files[data-preview] .demo-file small {
     display: none;
   }
 }
