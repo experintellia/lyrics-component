@@ -10,6 +10,9 @@ export interface ClockState {
     seekUntil: number;
     fresh: boolean;
 }
+/** The host's playback rate; absent or NaN count as 1, and so does 0 while paused (a native player reports rate 0
+ *  then). Playing at rate 0 is a real freeze. */
+export declare const rateOf: (p: Position) => number;
 export declare function clockTime(s: ClockState, now: number): number;
 export declare function startClock(p: Position, now: number): ClockState;
 export declare function tick(s: ClockState, p: Position, now: number): ClockState;

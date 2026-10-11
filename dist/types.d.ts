@@ -2,7 +2,7 @@ export interface Position {
     timeMs: number;
     playing: boolean;
     durationMs: number;
-    /** Playback rate the host is playing at (e.g. 0.5 for slow-down while syncing). Default 1. */
+    /** Playback rate the host is playing at (e.g. 0.5 for slow-down while syncing). Default 1; 0 while paused counts as 1. */
     rate?: number;
 }
 export interface Peaks {

@@ -19,6 +19,10 @@ export interface ClockState {
 
 const holding = (s: ClockState, now: number) => s.seekMs !== null && now < s.seekUntil;
 
+/** The host's playback rate; absent or NaN count as 1, and so does 0 while paused (a native player reports rate 0
+ *  then). Playing at rate 0 is a real freeze. */
+export const rateOf = (p: Position) => (p.rate === 0 && p.playing ? 0 : p.rate || 1);
+
 export function clockTime(s: ClockState, now: number): number {
   if (holding(s, now)) return s.seekMs!;
   if (!s.playing || s.fresh) return s.tickMs;
@@ -26,7 +30,7 @@ export function clockTime(s: ClockState, now: number): number {
 }
 
 export function startClock(p: Position, now: number): ClockState {
-  return { tickMs: p.timeMs, arrival: now, playing: p.playing, rate: p.rate ?? 1, floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
+  return { tickMs: p.timeMs, arrival: now, playing: p.playing, rate: rateOf(p), floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
 }
 
 export function tick(s: ClockState, p: Position, now: number): ClockState {
@@ -34,7 +38,7 @@ export function tick(s: ClockState, p: Position, now: number): ClockState {
   // re-render with a fresh `position` object literal; resetting `arrival` on those would freeze the
   // display. A host genuinely reporting a stalled position is covered by the 500 ms cap.
   // A rate change counts as a tick, so interpolation re-bases at the new rate.
-  if (p.timeMs === s.tickMs && p.playing === s.playing && (p.rate ?? 1) === s.rate) return s;
+  if (p.timeMs === s.tickMs && p.playing === s.playing && rateOf(p) === s.rate) return s;
   const next: ClockState = { ...startClock(p, now), seekMs: s.seekMs, seekUntil: s.seekUntil };
   if (holding(s, now)) {
     // Stale in-flight ticks are recorded but don't move the display; a tick near the target ends the hold.
@@ -99,7 +103,7 @@ export function usePlaybackTime(
   }, []);
 
   // offsetMs is output latency in wall time; at rate r it covers offsetMs × r of position.
-  const lag = offsetMs * (position.rate ?? 1);
+  const lag = offsetMs * rateOf(position);
   const seek = (audibleTargetMs: number) => {
     const target = audibleTargetMs + lag;
     state.current = seekClock(state.current!, target, performance.now());

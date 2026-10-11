@@ -5,16 +5,17 @@ const SNAP_MS = 300;
 const CAP_MS = 500;
 const SEEK_HOLD_MS = 1e3;
 const holding = (s, now) => s.seekMs !== null && now < s.seekUntil;
+const rateOf = (p) => p.rate === 0 && p.playing ? 0 : p.rate || 1;
 function clockTime(s, now) {
   if (holding(s, now)) return s.seekMs;
   if (!s.playing || s.fresh) return s.tickMs;
   return Math.max(s.floorMs, s.tickMs + Math.min(now - s.arrival, CAP_MS) * s.rate);
 }
 function startClock(p, now) {
-  return { tickMs: p.timeMs, arrival: now, playing: p.playing, rate: p.rate ?? 1, floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
+  return { tickMs: p.timeMs, arrival: now, playing: p.playing, rate: rateOf(p), floorMs: -Infinity, seekMs: null, seekUntil: 0, fresh: false };
 }
 function tick(s, p, now) {
-  if (p.timeMs === s.tickMs && p.playing === s.playing && (p.rate ?? 1) === s.rate) return s;
+  if (p.timeMs === s.tickMs && p.playing === s.playing && rateOf(p) === s.rate) return s;
   const next2 = { ...startClock(p, now), seekMs: s.seekMs, seekUntil: s.seekUntil };
   if (holding(s, now)) {
     if (Math.abs(p.timeMs - s.seekMs) <= SNAP_MS) next2.seekMs = null;
@@ -65,7 +66,7 @@ function usePlaybackTime(position, offsetMs, onSeek) {
       raf.current = 0;
     };
   }, []);
-  const lag = offsetMs * (position.rate ?? 1);
+  const lag = offsetMs * rateOf(position);
   const seek = (audibleTargetMs) => {
     const target = audibleTargetMs + lag;
     state.current = seekClock(state.current, target, performance.now());
@@ -713,7 +714,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: "stampWord", ms } : { t: "stamp", ms });
-  const backS = Math.round(50 * (position.rate ?? 1)) / 10;
+  const backS = Math.round(50 * rateOf(position)) / 10;
   const textLines = lines.filter(hasText);
   const lineNo = lines.slice(0, s.sel + 1).filter(hasText).length;
   const wordsDone = textLines.filter((l) => timedWords(l) === words(l).length).length;
@@ -947,9 +948,9 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
         /* @__PURE__ */ jsxs("p", { className: "lyrics-editor-progress", children: [
           /* @__PURE__ */ jsx("span", { className: "lyrics-editor-now", "aria-label": "Playback position", children: formatTime(audibleMs) }),
           !position.playing && /* @__PURE__ */ jsx("b", { children: " · paused" }),
-          (position.rate ?? 1) !== 1 && /* @__PURE__ */ jsxs("b", { children: [
+          rateOf(position) !== 1 && /* @__PURE__ */ jsxs("b", { children: [
             " · ",
-            position.rate,
+            rateOf(position),
             "×",
             /* @__PURE__ */ jsx("span", { className: "lyrics-editor-wide", children: " speed" })
           ] }),
