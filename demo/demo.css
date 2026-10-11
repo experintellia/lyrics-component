@@ -405,7 +405,7 @@ summary {
 }
 /* Short screens (iPhone SE/mini with Safari's bars): the Preview/Edit bar scrolls away instead of sticking, so the
    editor's tabs stick to the top and the line list gets its 61px. Relative, not static: z-index keeps it (and its
-   dropdowns) above the editor. ponytail: phones in landscape (~320px) stay cramped; they'd need the head to shrink. */
+   dropdowns) above the editor. Phones in landscape: see the max-height 450px rules. */
 @media (max-height: 640px) {
   :root {
     --lyrics-sticky-top: 0px;

@@ -762,7 +762,11 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     const top = Math.max(0, el.getBoundingClientRect().bottom);
     const bottom = Math.min(innerHeight, el.parentElement.querySelector(".lyrics-editor-dock").getBoundingClientRect().top);
     if (r.top < top) row.scrollIntoView({ block: "start" });
-    else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? "start" : "end" });
+    else if (r.bottom > bottom) {
+      const cs = getComputedStyle(row);
+      const room = innerHeight - parseFloat(cs.scrollMarginTop) - parseFloat(cs.scrollMarginBottom);
+      row.scrollIntoView({ block: r.height > room ? "start" : "end" });
+    }
   }, [s.sel, s.step, lines]);
   const rows = useMemo(() => {
     const band = new Array(lines.length);

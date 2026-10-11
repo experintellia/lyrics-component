@@ -295,6 +295,23 @@ test('↑ back to line 1: the selected line is scrolled clear of the sticky head
   }
 });
 
+test('landscape: a selected row too tall for the space between waveform and dock shows its top', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 325 });
+  await page.goto('/');
+  await loadAudio(page);
+  const long = "Ain't no fun without the bros, so give it up and let the whole crowd sing along tonight"; // wraps
+  await loadLyrics(page, 'l.txt', ['One', 'Two', long, ...Array.from({ length: 12 }, (_, i) => `Line ${i + 4}`)].join('\n'));
+  const stamp = page.getByRole('button', { name: /^(Re-s|S)tamp/ });
+  for (let i = 0; i < 3; i++) await stamp.click();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowDown'); // down onto the long stamped line: with its tools it's taller than fits
+  await expect(page.locator('.lyrics-editor-row[aria-current]')).toContainText(long);
+  const row = (await page.locator('.lyrics-editor-row[aria-current]').boundingBox())!;
+  const head = (await page.locator('.lyrics-editor-head').boundingBox())!;
+  expect(row.y).toBeGreaterThanOrEqual(head.y + head.height + 16); // clear of the waveform and its fade
+});
+
 test('waveform: drag left scrubs forward and seeks once on release; a tap still seeks', async ({ page }) => {
   await load(page);
   await page.getByRole('tab', { name: 'Edit' }).click();

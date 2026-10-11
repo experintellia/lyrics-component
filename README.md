@@ -126,7 +126,8 @@ Editing a line's text in step 1 keeps the stamps of unchanged lines. Undo/redo c
 The sticky bottom bar holds Undo/Redo, Stamp and a status line (playhead, "paused" while the host is
 not playing, and progress such as "6 of 16 lines synced" or "Line 5: word 4 of 7"), so it stays
 clear where you are. The step tabs are sticky too: if your page has its own sticky header, set
-`--lyrics-sticky-top` to its height so the tabs stick right under it. The component has no play button (the host
+`--lyrics-sticky-top` to its height so the tabs stick right under it. On phones in landscape (viewport ≤ 450px
+tall) only the waveform stays pinned and the tabs slide up under that header, so give the header `z-index` ≥ 2. The component has no play button (the host
 owns transport): put yours right under it. On phones, set `--lyrics-sticky-bottom` to the height of
 any transport bar you pin at the bottom so the Stamp bar sits above it.
 
@@ -182,7 +183,7 @@ Plain CSS. Set any of these on an ancestor:
 | `--lyrics-radius` | corners (0 is fine) | `8px` / `6px` |
 | `--lyrics-section-1` … `-4` | editor's section colours, cycling past 4: waveform bands (made translucent), label chips (white label) and verse edges (as given) | orange, green, purple, yellow |
 | `--lyrics-sticky-bottom` | editor's sticky Stamp bar offset from the viewport bottom | `0px` |
-| `--lyrics-sticky-top` | editor's sticky step tabs offset from the viewport top | `0px` |
+| `--lyrics-sticky-top` | editor's sticky head (step tabs, waveform) offset from the viewport top | `0px` |
 
 Fonts are inherited. Auto-scroll is not smooth under `prefers-reduced-motion: reduce`.
 

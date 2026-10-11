@@ -194,7 +194,12 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     const top = Math.max(0, el.getBoundingClientRect().bottom);
     const bottom = Math.min(innerHeight, el.parentElement!.querySelector('.lyrics-editor-dock')!.getBoundingClientRect().top);
     if (r.top < top) row.scrollIntoView({ block: 'start' });
-    else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? 'start' : 'end' }); // too tall: top
+    else if (r.bottom > bottom) {
+      // Too tall to fit between its scroll-margins (head + fade above, dock below): show its top instead.
+      const cs = getComputedStyle(row);
+      const room = innerHeight - parseFloat(cs.scrollMarginTop) - parseFloat(cs.scrollMarginBottom);
+      row.scrollIntoView({ block: r.height > room ? 'start' : 'end' });
+    }
   }, [s.sel, s.step, lines]);
 
   // The editor re-renders every animation frame while playing; the list only when its inputs change.

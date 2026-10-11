@@ -685,6 +685,10 @@ button.lyrics-line[aria-current] .lyrics-upcoming {
     display: inline;
     margin-inline-start: 4px;
   }
+  /* A step tab reached with the keyboard brings the tabs back down. */
+  .lyrics-editor-head:has(.lyrics-editor-tabs :focus-visible) {
+    top: var(--lyrics-sticky-top, 0px);
+  }
   .lyrics-wave canvas {
     height: 48px;
   }
