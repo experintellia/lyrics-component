@@ -282,6 +282,8 @@ test('transcribing: ↺ 5 s seeks the audio back and the caret stays in the Lyri
   await expect(box).toBeFocused();
   await page.keyboard.type('!');
   await expect(box).toHaveValue('First line!');
+  await page.getByLabel('Playback speed').selectOption('0.5'); // 5 s of listening = 2.5 s of song
+  await expect(page.getByRole('button', { name: 'Back 2.5 seconds' })).toHaveText('↺ 2.5 s');
 });
 
 const mute = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => (a.muted = true)); // headless WebKit won't play unmuted

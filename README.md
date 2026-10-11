@@ -56,8 +56,9 @@ A blank line shows as a stanza gap in every mode (in LRC, one blank line after a
    Pasting LRC (any line starts with a time tag) works like loading the file: the pasted lines go in at
    the caret (or replace the selection) with their stamps and word tags, its metadata is merged, and a
    notice says "Kept the timing of N pasted lines". One undo step. Plain-text pastes are untouched.
-   **↺ 5 s** (bottom bar) seeks back 5 seconds to hear the last bit again while transcribing; tapping it
-   keeps the caret in the text box.
+   **↺ 5 s** (bottom bar) seeks back 5 seconds of listening to hear the last bit again while transcribing:
+   at `position.rate` 0.5 it reads "↺ 2.5 s" and jumps 2.5 s of the song. Tapping it keeps the caret in
+   the text box.
 2. **Sync lines**: press play (host transport), then tap **Stamp** as each highlighted line starts.
    The Stamp button names its target ("Stamp line 3", or "Re-stamp line 3" for a line that has a
    time). Tapping a timed line selects it, seeks (via `onSeek`) to its exact stamp, like "▶ Play from

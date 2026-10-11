@@ -343,6 +343,17 @@ describe('Sync lines', () => {
     expect(back.hasAttribute('disabled')).toBe(true);
   });
 
+  it('Lyrics step: the jump back scales with playback rate (5 s of listening)', () => {
+    render({ position: { ...pos(10_000), rate: 0.5 } });
+    click(tab('Lyrics'));
+    const back = $$('button').find((b) => b.ariaLabel?.startsWith('Back'))!;
+    expect([back.textContent, back.ariaLabel]).toEqual(['↺ 2.5 s', 'Back 2.5 seconds']);
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(7_500);
+    render({ position: { ...pos(7_500), rate: 0.75 } });
+    expect(back.textContent).toBe('↺ 3.8 s'); // 3.75, rounded for the label
+  });
+
   it('stamp button prevents default on pointerdown (keeps focus / no iOS keyboard)', () => {
     render();
     const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
