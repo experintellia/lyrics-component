@@ -327,7 +327,7 @@ describe('Sync lines', () => {
   it('Lyrics step: ↺ 5 s seeks back 5 s (clamped at 0, + offsetMs) without taking focus; off with no song', () => {
     render({ position: pos(12_000), offsetMs: 200 });
     click(tab('Lyrics'));
-    const back = $$('button').find((b) => b.ariaLabel === 'Back 5 seconds')!;
+    const back = $$('button').find((b) => b.ariaLabel === 'Back 5 s')!;
     click(back);
     expect(onSeek).toHaveBeenLastCalledWith(7_000); // audible 11.8 s − 5 s, + 200 ms
     const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
@@ -347,7 +347,7 @@ describe('Sync lines', () => {
     render({ position: { ...pos(10_000), rate: 0.5 } });
     click(tab('Lyrics'));
     const back = $$('button').find((b) => b.ariaLabel?.startsWith('Back'))!;
-    expect([back.textContent, back.ariaLabel]).toEqual(['↺ 2.5 s', 'Back 2.5 seconds']);
+    expect([back.textContent, back.ariaLabel]).toEqual(['↺ 2.5 s', 'Back 2.5 s']);
     click(back);
     expect(onSeek).toHaveBeenLastCalledWith(7_500);
     render({ position: { ...pos(7_500), rate: 0.75 } });

@@ -120,7 +120,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: 'stampWord', ms } : { t: 'stamp', ms });
-  // ↺ jumps back 5 s of listening: at 0.5× that's 2.5 s of the song (rounded to 0.1 s for the label).
+  // ↺ jumps back 5 s of listening: at 0.5× that's 2.5 s of the song (rounded to 0.1 s, so it matches its label).
   const backS = Math.round(50 * (position.rate ?? 1)) / 10;
   const textLines = lines.filter(hasText);
   const lineNo = lines.slice(0, s.sel + 1).filter(hasText).length;
@@ -343,7 +343,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
             {/* Transcribing: hear the last bit again. preventDefault keeps the caret in the box (no blur, no iOS keyboard hide). */}
             <button
               type="button"
-              aria-label={`Back ${backS} seconds`}
+              aria-label={`Back ${backS} s`} // contains the visible "5 s", for voice control
               disabled={!dur}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => seek(Math.max(0, audibleMs - backS * 1000))}

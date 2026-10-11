@@ -916,7 +916,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           "button",
           {
             type: "button",
-            "aria-label": `Back ${backS} seconds`,
+            "aria-label": `Back ${backS} s`,
             disabled: !dur,
             onPointerDown: (e) => e.preventDefault(),
             onClick: () => seek(Math.max(0, audibleMs - backS * 1e3)),
