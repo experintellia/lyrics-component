@@ -407,3 +407,68 @@ test('preview karaoke: mid-word the active word is part-filled and the current l
   await expect.poll(() => current.evaluate(scale)).toBe(1);
   await expect.poll(fill).toBeGreaterThan(0.3); // the fill still shows progress
 });
+
+test('drafts: edit, reload, Restore brings back the exact LRC; re-picking the audio attaches it; Discard removes it', async ({ page }) => {
+  const draft = () => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('lyrics-demo-drafts') ?? '{}')).map((d: any) => d.lrc));
+  const nudge = async () => {
+    await page.getByRole('tab', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: /First line/ }).click();
+    await page.getByRole('button', { name: '+0.1 s' }).click();
+  };
+  await page.goto('/');
+  await loadAudio(page);
+  await loadLyrics(page, 'w.lrc', '[ti:Tone]\n[00:00.50]First line\n[00:02.00]<00:02.00>Second <00:02.60>line\n[00:03.50]Third line\n');
+  expect(await draft()).toEqual([]); // loaded, unchanged: nothing to save
+  await nudge();
+  await expect.poll(draft).toEqual([expect.stringContaining('[00:00.60]First line')]);
+  const [saved] = await draft();
+  expect(saved).toContain('<00:02.00>Second <00:02.60>line');
+  await page.getByTitle('Settings').click();
+  await expect(page.locator('.demo-drafts span')).toHaveText(['song.wav · just now']);
+  await expect(page.getByRole('button', { name: 'Delete draft: song.wav' })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText('Restore your lyrics for song.wav (edited just now)?')).toBeVisible();
+  await page.getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByText('Choose song.wav again')).toBeVisible();
+  await expect(page.locator('.lyrics-line')).toHaveText(['First line', 'Second line', 'Third line']);
+  await loadAudio(page); // same file: attaches, no second prompt
+  await expect(page.getByText('Choose song.wav again')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
+  const { text } = await downloadText(page);
+  expect(text).toBe(saved); // exact, stamps and word tags included
+  expect(await draft()).toEqual([]); // downloaded: cleared
+
+  await nudge();
+  await expect.poll(draft).toHaveLength(1);
+  await page.reload();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
+  expect(await draft()).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
+});
+
+test('drafts: re-picking a known audio file offers its draft; storage that throws only shows a notice', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page);
+  await page.getByLabel('Lyrics text').fill('One\nTwo');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lyrics-demo-drafts'))).toContain('One\\nTwo');
+  await page.reload();
+  await page.getByLabel('Lyrics text').fill('Other'); // ignore the prompt...
+  await loadAudio(page); // ...then pick the song: its draft is offered
+  await page.getByRole('button', { name: 'Restore' }).click();
+  await page.getByRole('tab', { name: 'Lyrics', exact: true }).click();
+  await expect(page.getByLabel('Lyrics text')).toHaveValue('One\nTwo');
+
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException('quota', 'QuotaExceededError'); // old iOS private mode
+    };
+  });
+  await page.reload();
+  await expect(page.getByText("This browser won't save drafts")).toBeVisible();
+  await loadAudio(page);
+  await page.getByLabel('Lyrics text').fill('Still works');
+  await expect(page.getByLabel('Lyrics text')).toHaveValue('Still works');
+});
