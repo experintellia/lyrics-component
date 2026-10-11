@@ -1,46 +1,20 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { displayText, formatTime, lineWords, type LrcLine } from './lrc';
+import { displayText, formatTime, lineSpan, lineWords, sections, type LrcLine } from './lrc';
 import type { Peaks } from './types';
 
 const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1000); // ruler tick spacing
 const clampSpan = (ms: number) => Math.min(600_000, Math.max(1_000, ms));
 const DRAG_PX = 4; // less movement than this between press and release is a tap
-// ponytail: fixed hues (not CSS vars); translucent mid-lightness reads on light and dark. Blue is the accent's.
+// Default section hues: translucent mid-lightness reads on light and dark. Blue is the accent's.
 const HUES = [30, 150, 290, 60]; // four, so a song's usual 4 stanzas don't repeat a colour
-/** Section k's colour; the editor's line list uses it (stronger) to tie each verse to its band. */
-export const bandColor = (k: number, alpha = 0.2) => `hsl(${HUES[k % HUES.length]} 75% 50% / ${alpha})`;
-
-/** `from`/`to`: the section's line indices [from, to). */
-export interface Section { startMs: number; endMs: number; label: string; from: number; to: number }
-
-const LABEL = /^\[.+\]$/; // an unstamped "[Chorus]" line names the section it starts
-const isLabel = (l: LrcLine) => l.timeMs === null && LABEL.test(displayText(l.text));
-const stampFrom = (lines: LrcLine[], i: number, end: number) => lines.slice(i).find((l) => l.timeMs !== null)?.timeMs ?? end;
-
-/** Sections start at the first line, after blank lines, or at a label line; each runs from its first stamp
- *  to the next stamp after its lines (the next section's, or a stamped gap's). Sections without stamps are dropped. */
-export function sections(lines: LrcLine[], durationMs = Infinity): Section[] {
-  const out: Section[] = [];
-  for (let i = 0; i < lines.length; ) {
-    if (!displayText(lines[i].text)) {
-      i++;
-      continue;
-    }
-    let j = i + 1;
-    while (j < lines.length && displayText(lines[j].text) && !isLabel(lines[j])) j++;
-    const start = lines.slice(i, j).find((l) => l.timeMs !== null)?.timeMs;
-    const label = isLabel(lines[i]) ? displayText(lines[i].text).slice(1, -1) : '';
-    if (start != null) out.push({ startMs: start, endMs: Math.max(start, stampFrom(lines, j, durationMs)), label, from: i, to: j });
-    i = j;
-  }
-  return out;
-}
-
-/** The time a stamped line covers: its stamp up to the next stamp (or the end). */
-export function lineSpan(lines: LrcLine[], i: number, durationMs = Infinity): [number, number] | null {
-  const t = lines[i]?.timeMs;
-  return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];
-}
+/** Section k's host colour variable (`--lyrics-section-1`…`4`) and its default hue. */
+const section = (k: number) => [`--lyrics-section-${(k % HUES.length) + 1}`, HUES[k % HUES.length]] as const;
+/** Section k's colour for the editor's line list (ties each verse to its band): a host's as given, else the
+ * default hue, stronger than its band. */
+export const bandColor = (k: number) => {
+  const [v, hue] = section(k);
+  return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
+};
 
 const FIT_MARGIN = 500; // ms shown before and after a fitted line
 // ponytail: a fitted line is at most 15 s wide (e.g. one running into an unstamped instrumental, or the last
@@ -142,10 +116,17 @@ export function Waveform({ peaks, timeMs, lines, onSeek, selected, fit, marks, p
 
     // Background: section bands, then the selected line's span in the accent colour.
     const secs = sections(lines, duration);
+    // The canvas can't resolve var(): a host's section colour is read here, translucent via globalAlpha.
+    const secColor = (k: number, sl: string) => {
+      const [v, hue] = section(k);
+      return cssVar(v, `hsl(${hue} ${sl})`);
+    };
+    ctx.globalAlpha = 0.2;
     secs.forEach((s, k) => {
-      ctx.fillStyle = bandColor(k);
+      ctx.fillStyle = secColor(k, '75% 50%');
       ctx.fillRect(clampX(s.startMs), 0, clampX(s.endMs) - clampX(s.startMs), h);
     });
+    ctx.globalAlpha = 1;
     const sel = selected === undefined ? null : lineSpan(lines, selected, duration);
     if (sel) {
       ctx.clearRect(clampX(sel[0]), 0, clampX(sel[1]) - clampX(sel[0]), h); // same tint over any band
@@ -243,7 +224,7 @@ export function Waveform({ peaks, timeMs, lines, onSeek, selected, fit, marks, p
       ctx.beginPath();
       ctx.rect(x0, 0, x1 - x0 - 2 * dpr, h);
       ctx.clip();
-      ctx.fillStyle = `hsl(${HUES[k % HUES.length]} 70% 32%)`;
+      ctx.fillStyle = secColor(k, '70% 32%'); // a host's colour as-is, under a white label
       ctx.fillRect(x0 + 3 * dpr, 24 * dpr, ctx.measureText(s.label).width + 8 * dpr, 16 * dpr);
       ctx.fillStyle = '#fff';
       ctx.fillText(s.label, x0 + 7 * dpr, 36 * dpr);

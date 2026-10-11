@@ -197,7 +197,8 @@ The demo pins its `<audio>` controls and the Stamp button at the bottom on small
      handle these in a capture-phase window listener and `preventDefault` them.
    - Exception: if the focused element `:focus-visible` (reached with the keyboard, via Tab), Enter and
      Space activate it as usual.
-   - Keys: S and Enter stamp, ↑/↓ choose a line (or a word in the word step), Ctrl/⌘+Z undo, Ctrl/⌘+Y
+   - Keys: S and Enter stamp, ↑/↓ choose a line (or a word in the word step), ←/→ nudge it ±10 ms
+     (Shift: ±100 ms; like ↑/↓ they beat a clicked slider's native arrows), Ctrl/⌘+Z undo, Ctrl/⌘+Y
      or Shift+Ctrl/⌘+Z redo. Space plays or pauses in the demo, under the same rule.
    - The hint says "Shortcuts work anywhere except while typing."
    - e2e on both engines covers: after clicking any button or the slider, the keys act as shortcuts;

@@ -1,20 +1,8 @@
 import { type LrcLine } from './lrc';
 import type { Peaks } from './types';
-/** Section k's colour; the editor's line list uses it (stronger) to tie each verse to its band. */
-export declare const bandColor: (k: number, alpha?: number) => string;
-/** `from`/`to`: the section's line indices [from, to). */
-export interface Section {
-    startMs: number;
-    endMs: number;
-    label: string;
-    from: number;
-    to: number;
-}
-/** Sections start at the first line, after blank lines, or at a label line; each runs from its first stamp
- *  to the next stamp after its lines (the next section's, or a stamped gap's). Sections without stamps are dropped. */
-export declare function sections(lines: LrcLine[], durationMs?: number): Section[];
-/** The time a stamped line covers: its stamp up to the next stamp (or the end). */
-export declare function lineSpan(lines: LrcLine[], i: number, durationMs?: number): [number, number] | null;
+/** Section k's colour for the editor's line list (ties each verse to its band): a host's as given, else the
+ * default hue, stronger than its band. */
+export declare const bandColor: (k: number) => string;
 /** The visible [start, span]: centred on the playhead, or (word step) fitted to a line's span plus a margin,
  *  widened by the zoom buttons (`widen` ≥ 1). */
 export declare function viewWindow(centreMs: number, spanMs: number, fit?: [number, number] | null, widen?: number): [number, number];

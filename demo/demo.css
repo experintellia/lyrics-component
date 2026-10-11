@@ -144,6 +144,7 @@ summary {
   font-weight: bold;
 }
 .demo-tabs > button,
+.demo-more-panel button,
 .demo-cta button,
 .demo-play {
   min-height: 44px;
@@ -154,7 +155,8 @@ summary {
   background: transparent;
   cursor: pointer;
 }
-.demo-tabs > button:disabled {
+.demo-tabs > button:disabled,
+.demo-more-panel button:disabled {
   border-color: #888;
   color: #767676;
   cursor: default;

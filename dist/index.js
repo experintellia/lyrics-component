@@ -1,6 +1,6 @@
 import { jsx, jsxs, Fragment } from "react/jsx-runtime";
 import { useRef, useState, useLayoutEffect, useEffect, useMemo, memo, Fragment as Fragment$1, useReducer } from "react";
-import { parseLrc, lineWords, displayText, setLineTime, joinWords, formatTime, serializeLrc } from "./lrc.js";
+import { parseLrc, lineWords, displayText, setLineTime, joinWords, sections, lineSpan, formatTime, serializeLrc } from "./lrc.js";
 const SNAP_MS = 300;
 const CAP_MS = 500;
 const SEEK_HOLD_MS = 1e3;
@@ -318,10 +318,13 @@ function reducer(s, a) {
       return i === s.sel ? s : { ...s, sel: i, word: a.d > 0 ? 0 : Math.max(0, words(lines[i]).length - 1) };
     }
     case "nudge": {
-      if (s.step !== "words") return (line == null ? void 0 : line.timeMs) != null ? put(setLineTime(line, Math.max(0, line.timeMs + a.d))) : s;
+      if (s.step !== "words") {
+        const t2 = (line == null ? void 0 : line.timeMs) ?? null;
+        return t2 === null || Math.max(0, t2 + a.d) === t2 ? s : put(setLineTime(line, Math.max(0, t2 + a.d)));
+      }
       const ws = line ? lineWords(line.text) : [];
       const t = ((_a = ws[s.word]) == null ? void 0 : _a.text) ? ws[s.word].timeMs : null;
-      if (t === null) return s;
+      if (t === null || Math.max(0, t + a.d) === t) return s;
       ws[s.word] = { ...ws[s.word], timeMs: Math.max(0, t + a.d) };
       return put({ timeMs: s.word === 0 ? ws[0].timeMs : line.timeMs, text: joinWords(ws) });
     }
@@ -341,35 +344,11 @@ const STEPS$1 = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1e3);
 const clampSpan = (ms) => Math.min(6e5, Math.max(1e3, ms));
 const DRAG_PX = 4;
 const HUES = [30, 150, 290, 60];
-const bandColor = (k, alpha = 0.2) => `hsl(${HUES[k % HUES.length]} 75% 50% / ${alpha})`;
-const LABEL = /^\[.+\]$/;
-const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
-const stampFrom = (lines, i, end) => {
-  var _a;
-  return ((_a = lines.slice(i).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs) ?? end;
+const section = (k) => [`--lyrics-section-${k % HUES.length + 1}`, HUES[k % HUES.length]];
+const bandColor = (k) => {
+  const [v, hue] = section(k);
+  return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
 };
-function sections(lines, durationMs = Infinity) {
-  var _a;
-  const out = [];
-  for (let i = 0; i < lines.length; ) {
-    if (!displayText(lines[i].text)) {
-      i++;
-      continue;
-    }
-    let j = i + 1;
-    while (j < lines.length && displayText(lines[j].text) && !isLabel(lines[j])) j++;
-    const start = (_a = lines.slice(i, j).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs;
-    const label = isLabel(lines[i]) ? displayText(lines[i].text).slice(1, -1) : "";
-    if (start != null) out.push({ startMs: start, endMs: Math.max(start, stampFrom(lines, j, durationMs)), label, from: i, to: j });
-    i = j;
-  }
-  return out;
-}
-function lineSpan(lines, i, durationMs = Infinity) {
-  var _a;
-  const t = (_a = lines[i]) == null ? void 0 : _a.timeMs;
-  return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];
-}
 const FIT_MARGIN = 500;
 const FIT_MAX = 15e3;
 function viewWindow(centreMs, spanMs, fit, widen = 1) {
@@ -436,10 +415,16 @@ function Waveform({ peaks, timeMs, lines, onSeek, selected, fit, marks, pending,
     const duration = peaks ? peaks.max.length * peaks.msPerBucket : Infinity;
     ctx.clearRect(0, 0, w, h);
     const secs = sections(lines, duration);
+    const secColor = (k, sl) => {
+      const [v, hue] = section(k);
+      return cssVar(v, `hsl(${hue} ${sl})`);
+    };
+    ctx.globalAlpha = 0.2;
     secs.forEach((s, k) => {
-      ctx.fillStyle = bandColor(k);
+      ctx.fillStyle = secColor(k, "75% 50%");
       ctx.fillRect(clampX(s.startMs), 0, clampX(s.endMs) - clampX(s.startMs), h);
     });
+    ctx.globalAlpha = 1;
     const sel = selected === void 0 ? null : lineSpan(lines, selected, duration);
     if (sel) {
       ctx.clearRect(clampX(sel[0]), 0, clampX(sel[1]) - clampX(sel[0]), h);
@@ -524,7 +509,7 @@ function Waveform({ peaks, timeMs, lines, onSeek, selected, fit, marks, pending,
       ctx.beginPath();
       ctx.rect(x0, 0, x1 - x0 - 2 * dpr, h);
       ctx.clip();
-      ctx.fillStyle = `hsl(${HUES[k % HUES.length]} 70% 32%)`;
+      ctx.fillStyle = secColor(k, "70% 32%");
       ctx.fillRect(x0 + 3 * dpr, 24 * dpr, ctx.measureText(s.label).width + 8 * dpr, 16 * dpr);
       ctx.fillStyle = "#fff";
       ctx.fillText(s.label, x0 + 7 * dpr, 36 * dpr);
@@ -748,6 +733,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
     else if (s.step === "lyrics" || mod || e.altKey) return;
     else if (k === "s" || k === "enter") !e.repeat && stamp();
     else if (k === "arrowup" || k === "arrowdown") dispatch({ t: wordStep ? "moveWord" : "move", d: k === "arrowup" ? -1 : 1 });
+    else if (k === "arrowleft" || k === "arrowright") dispatch({ t: "nudge", d: (k === "arrowleft" ? -1 : 1) * (e.shiftKey ? 100 : 10) });
     else return;
     e.preventDefault();
   };
@@ -777,7 +763,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           className: "lyrics-editor-row",
           "aria-current": sel || void 0,
           "data-late": late || void 0,
-          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i], 0.7) },
+          style: band[i] === void 0 ? void 0 : { borderInlineStartColor: bandColor(band[i]) },
           children: [
             /* @__PURE__ */ jsxs(
               "button",
@@ -921,7 +907,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }) {
           " ",
           "Keys: S or Enter = Stamp · ↑/↓ = choose ",
           wordStep ? "word" : "line",
-          " · Ctrl/⌘+Z = undo. Shortcuts work anywhere except while typing."
+          " · ←/→ = nudge 0.01 s (Shift: 0.1 s) · Ctrl/⌘+Z = undo. Shortcuts work anywhere except while typing."
         ] })
       ] }),
       textLines.length ? /* @__PURE__ */ jsx("ol", { ref: list, className: "lyrics-editor-lines", children: rows }) : /* @__PURE__ */ jsx("button", { type: "button", className: "lyrics-editor-primary", onClick: () => dispatch({ t: "step", step: "lyrics" }), children: "← Add lyrics" }),

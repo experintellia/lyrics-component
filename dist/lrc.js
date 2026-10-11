@@ -42,6 +42,34 @@ function setLineTime(line, timeMs) {
   const text = line.text.replace(WORD_TAG, (_, m, s, f) => `<${formatTime(toMs(m, s, f) + delta)}>`);
   return { timeMs, text };
 }
+const LABEL = /^\[.+\]$/;
+const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
+const stampFrom = (lines, i, end) => {
+  var _a;
+  return ((_a = lines.slice(i).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs) ?? end;
+};
+function sections(lines, durationMs = Infinity) {
+  var _a;
+  const out = [];
+  for (let i = 0; i < lines.length; ) {
+    if (!displayText(lines[i].text)) {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < lines.length && displayText(lines[j].text) && !isLabel(lines[j])) j++;
+    const start = (_a = lines.slice(i, j).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs;
+    const label = isLabel(lines[i]) ? displayText(lines[i].text).slice(1, -1) : "";
+    if (start != null) out.push({ startMs: start, endMs: Math.max(start, stampFrom(lines, j, durationMs)), label, from: i, to: j });
+    i = j;
+  }
+  return out;
+}
+function lineSpan(lines, i, durationMs = Infinity) {
+  var _a;
+  const t = (_a = lines[i]) == null ? void 0 : _a.timeMs;
+  return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];
+}
 function parseLrc(input) {
   const raw = input.replace(/\s+$/, "").split(/\r?\n/);
   const isLrc = raw.some((l) => LEADING_TAGS.test(l.trim()));
@@ -90,8 +118,10 @@ export {
   displayText,
   formatTime,
   joinWords,
+  lineSpan,
   lineWords,
   parseLrc,
+  sections,
   serializeLrc,
   setLineTime
 };

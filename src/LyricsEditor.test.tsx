@@ -248,6 +248,16 @@ describe('Sync lines', () => {
     expect(button('+0.1 s')).toBeUndefined(); // tools only for a stamped line
   });
 
+  it('←/→ nudge 10 ms, Shift+←/→ 100 ms (also on a clicked slider)', () => {
+    render({ lrc: '[00:01.00]<00:01.50>a' });
+    key('ArrowRight');
+    expect(lastLrc()).toBe('[00:01.01]<00:01.51>a\n');
+    const slider = container.appendChild(document.createElement('input'));
+    slider.type = 'range';
+    key('ArrowLeft', { shiftKey: true }, slider);
+    expect(lastLrc()).toBe('[00:00.91]<00:01.41>a\n');
+  });
+
   it('undo/redo: one step per stamp/nudge/clear, via buttons and shortcuts', () => {
     render();
     click(stampButton()); // a @ 5.00
@@ -414,6 +424,12 @@ describe('Sync words: playing from words, nudges, loop', () => {
     click($$('.lyrics-editor-chip')[0]);
     click(button('−0.1 s'));
     expect(lastLrc()).toBe('[00:00.90]<00:00.90>a <00:02.10>b\n');
+    key('ArrowRight', { shiftKey: true }); // keys too: word 0 still moves the line
+    key('ArrowLeft');
+    expect(lastLrc()).toBe('[00:00.99]<00:00.99>a <00:02.10>b\n');
+    click($$('.lyrics-editor-chip')[1]);
+    key('ArrowRight');
+    expect(lastLrc()).toBe('[00:00.99]<00:00.99>a <00:02.11>b\n');
   });
 
   it('Loop line: playing past the line end seeks to its start, once per pass; off when unticked or in the line step', () => {
