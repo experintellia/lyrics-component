@@ -2,9 +2,11 @@
 import { displayText, lineSpan, lineWords, sections, type LrcDoc } from './lrc';
 
 const ENT: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ENT[c]);
+// Also drops what XML 1.0 can't hold at all: control characters, lone surrogates, U+FFFE/U+FFFF.
+const esc = (s: string) => s.replace(/[&<>"]|[\0-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/gu, (c) => ENT[c] ?? '');
 const pad = (n: number, w = 2) => String(n).padStart(w, '0');
-// HH:MM:SS.mmm: TTML's full clock-time, valid in any TTML reader; Apple Music reads it like its own M:SS.mmm.
+// HH:MM:SS.mmm, TTML's full clock-time form. Times are absolute at every level (div, p, span), as in Apple's files;
+// a strict TTML reader would take a child's begin as relative to its parent's (par time containment).
 const clock = (ms: number) => {
   ms = Math.max(0, Math.round(ms));
   return `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)}.${pad(ms % 1000, 3)}`;
@@ -25,17 +27,20 @@ export function serializeTtml(doc: LrcDoc, opts: { durationMs?: number; lang?: s
   const p = (i: number) => {
     const ws = words[i];
     let [begin, end] = lineSpan(lines, i, dur)!;
-    const tail = ws.at(-1)?.text === '' ? ws.pop()!.timeMs : null; // trailing tag: end of the last word
-    if (end === Infinity && tail !== null) end = tail;
+    let tail = ws.at(-1)?.text === '' ? ws.pop()!.timeMs : null; // trailing tag: end of the last word
+    if (end === Infinity && tail !== null) end = Math.max(begin, tail);
+    if (tail !== null) tail = Math.min(end, Math.max(begin, tail));
     if (!ws.some((w) => w.timeMs !== null)) return `<p${timed(begin, end)}>${esc(displayText(lines[i].text))}</p>`;
     // Untimed words join the timed span before them (phrase timing); leading ones start with the line.
+    // Out-of-order tags are clamped: starts stay within the line and never go backwards.
     const spans: { t: number; text: string }[] = [];
     for (const w of ws) {
-      if (w.timeMs !== null || !spans.length) spans.push({ t: w.timeMs ?? begin, text: w.text });
+      const prev = spans.at(-1)?.t ?? begin;
+      if (w.timeMs !== null || !spans.length) spans.push({ t: Math.min(end, Math.max(prev, w.timeMs ?? begin)), text: w.text });
       else spans[spans.length - 1].text += w.text;
     }
     const inner = spans.map(
-      (s, k) => `<span${timed(s.t, spans[k + 1]?.t ?? tail ?? end)}>${esc(s.text.trimEnd())}</span>${/\s$/.test(s.text) ? ' ' : ''}`,
+      (s, k) => `<span${timed(s.t, Math.max(s.t, spans[k + 1]?.t ?? tail ?? end))}>${esc(s.text.trimEnd())}</span>${/\s$/.test(s.text) ? ' ' : ''}`,
     );
     return `<p${timed(begin, end)}>${inner.join('').trimEnd()}</p>`;
   };

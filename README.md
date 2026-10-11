@@ -44,7 +44,10 @@ in the shape Apple Music uses (export only; there is no TTML import):
 - In a word-timed line, one `<span begin end>` per timed word or syllable, ending at the next one, the trailing
   end tag, or the line's end. Untimed words join the timed span before them (phrase timing); untimed words
   before the first tag start with the line.
-- Times are `HH:MM:SS.mmm`, TTML's full clock time (Apple's own files often use the shorter `M:SS.mmm`).
+- Times are `HH:MM:SS.mmm` (TTML's full clock-time form; Apple's own files often use the shorter `M:SS.mmm`) and
+  absolute at every level, as in Apple's files. A strict TTML reader takes a child's `begin` as relative to its
+  parent (`par` time containment), so it would place spans late. Out-of-order word tags are clamped into their
+  line, so nothing ends before it begins. Characters XML 1.0 can't hold (control characters) are dropped.
 
 Limits: no duet or background-vocal agents per line, no translations, no styling. The demo's ⚙ panel has
 "Download .ttml".

@@ -71,6 +71,24 @@ describe('serializeTtml', () => {
     expect(out).toContain('>a &lt; b &amp; c &gt; d</p>');
   });
 
+  it('out-of-order word tags are clamped: no span or line ends before it begins', () => {
+    expect(ps(ttml('[00:02.00]<00:02.00>a <00:04.00>b\n[00:03.00]next', { durationMs: 5000 }))![0]).toBe(
+      '<p begin="00:00:02.000" end="00:00:03.000"><span begin="00:00:02.000" end="00:00:03.000">a</span> ' +
+        '<span begin="00:00:03.000" end="00:00:03.000">b</span></p>', // word after the next line's stamp
+    );
+    expect(ps(ttml('[00:03.00]<00:03.00>a <00:01.00>b', { durationMs: 5000 }))).toEqual([
+      '<p begin="00:00:03.000" end="00:00:05.000"><span begin="00:00:03.000" end="00:00:03.000">a</span> ' +
+        '<span begin="00:00:03.000" end="00:00:05.000">b</span></p>', // word before the one before it
+    ]);
+    expect(ps(ttml('[00:01.00]<00:01.00>a <00:00.50>'))).toEqual([
+      '<p begin="00:00:01.000" end="00:00:01.000"><span begin="00:00:01.000" end="00:00:01.000">a</span></p>', // end tag before the line
+    ]);
+  });
+
+  it('drops characters XML 1.0 cannot hold', () => {
+    expect(ps(ttml('[00:01.00]a\u0001b\u001Fc\uD800d\uFFFEe 😀', { durationMs: 2000 }))).toEqual(['<p begin="00:00:01.000" end="00:00:02.000">abcde 😀</p>']);
+  });
+
   it('refuses a document with nothing stamped', () => {
     expect(() => ttml('plain\ntext')).toThrow(/no stamped lines/);
     expect(() => ttml('[00:01.00]')).toThrow(/no stamped lines/);

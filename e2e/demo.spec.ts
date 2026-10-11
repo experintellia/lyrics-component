@@ -157,7 +157,8 @@ test('UI rules: 44px targets, ≥12px font, wrapping, hover scoped, no smooth sc
   expect(unscoped).toEqual([]);
 
   await page.getByRole('tab', { name: 'Edit' }).click();
-  for (const el of await page.locator('.lyrics-editor button, .demo-tabs button:visible, .demo-tabs summary, .demo-transport button').all()) {
+  await page.getByTitle('Settings').click(); // its panel's buttons too
+  for (const el of await page.locator('.lyrics-editor button, .demo-tabs button, .demo-tabs summary, .demo-transport button').all()) {
     const box = (await el.boundingBox())!;
     expect(Math.min(box.width, box.height), await el.evaluate((e) => e.outerHTML)).toBeGreaterThanOrEqual(44);
   }

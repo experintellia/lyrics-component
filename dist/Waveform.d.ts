@@ -1,6 +1,5 @@
 import { type LrcLine } from './lrc';
 import type { Peaks } from './types';
-export { lineSpan, sections, type Section } from './lrc';
 /** Section k's colour; the editor's line list uses it (stronger) to tie each verse to its band. */
 export declare const bandColor: (k: number, alpha?: number) => string;
 /** The visible [start, span]: centred on the playhead, or (word step) fitted to a line's span plus a margin,

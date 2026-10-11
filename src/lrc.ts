@@ -61,7 +61,10 @@ export function setLineTime(line: LrcLine, timeMs: number | null): LrcLine {
   return { timeMs, text };
 }
 
-/** `from`/`to`: the section's line indices [from, to). */
+// Sections and line spans are shared by the waveform, the editor and ttml.ts: @internal, not a stable API.
+
+/** `from`/`to`: the section's line indices [from, to).
+ *  @internal */
 export interface Section { startMs: number; endMs: number; label: string; from: number; to: number }
 
 const LABEL = /^\[.+\]$/; // an unstamped "[Chorus]" line names the section it starts
@@ -69,7 +72,8 @@ const isLabel = (l: LrcLine) => l.timeMs === null && LABEL.test(displayText(l.te
 const stampFrom = (lines: LrcLine[], i: number, end: number) => lines.slice(i).find((l) => l.timeMs !== null)?.timeMs ?? end;
 
 /** Sections start at the first line, after blank lines, or at a label line; each runs from its first stamp
- *  to the next stamp after its lines (the next section's, or a stamped gap's). Sections without stamps are dropped. */
+ *  to the next stamp after its lines (the next section's, or a stamped gap's). Sections without stamps are dropped.
+ *  @internal */
 export function sections(lines: LrcLine[], durationMs = Infinity): Section[] {
   const out: Section[] = [];
   for (let i = 0; i < lines.length; ) {
@@ -87,7 +91,8 @@ export function sections(lines: LrcLine[], durationMs = Infinity): Section[] {
   return out;
 }
 
-/** The time a stamped line covers: its stamp up to the next stamp (or the end). */
+/** The time a stamped line covers: its stamp up to the next stamp (or the end).
+ *  @internal */
 export function lineSpan(lines: LrcLine[], i: number, durationMs = Infinity): [number, number] | null {
   const t = lines[i]?.timeMs;
   return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];

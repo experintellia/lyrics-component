@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { parseLrc } from './lrc';
-import { lineSpan, sections, viewWindow, Waveform, wordMarks } from './Waveform';
+import { lineSpan, parseLrc, sections } from './lrc';
+import { viewWindow, Waveform, wordMarks } from './Waveform';
 
 const lines = (lrc: string) => parseLrc(lrc).lines;
 

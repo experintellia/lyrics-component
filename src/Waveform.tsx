@@ -2,8 +2,6 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { displayText, formatTime, lineSpan, lineWords, sections, type LrcLine } from './lrc';
 import type { Peaks } from './types';
 
-export { lineSpan, sections, type Section } from './lrc'; // live in lrc.ts so ttml.ts can use them without React
-
 const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1000); // ruler tick spacing
 const clampSpan = (ms: number) => Math.min(600_000, Math.max(1_000, ms));
 const DRAG_PX = 4; // less movement than this between press and release is a tap
