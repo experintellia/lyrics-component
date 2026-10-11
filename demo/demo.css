@@ -180,7 +180,7 @@ summary {
 .demo-save {
   position: relative;
 }
-/* Save menu: one full-width item per row; Share's note under its label. */
+/* Save menu: one full-width item per row, icon before the label. */
 .demo-save .demo-more-panel {
   display: flex;
   flex-direction: column;
@@ -188,13 +188,14 @@ summary {
   z-index: 3; /* over the editor's sticky head and the transport, even where the Preview/Edit bar isn't sticky */
 }
 .demo-save .demo-more-panel button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
   text-align: start;
   overflow-wrap: anywhere;
 }
-.demo-save .demo-more-panel small {
-  display: block;
-  font-size: 12px;
-  color: var(--demo-muted, #595959);
+.demo-save svg {
+  flex-shrink: 0;
 }
 .demo-more summary {
   display: block; /* no ▶ marker: next to the audio it would read as "play" */

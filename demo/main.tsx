@@ -16,8 +16,15 @@ const clock = (ms: number) => formatTime(ms).slice(0, 5); // mm:ss
 // offer "View" or ignore `download` and open the text in this tab (dropping the page and its edits), and it saves
 // it as .lrc.txt.
 const lrcFile = (text: string, name: string) => new File([text], name, { type: 'application/octet-stream' });
-// Share… only where files can be shared (iOS/macOS Safari; Android Chrome won't share .lrc).
+// Share… only where the Web Share API can share files (iOS/macOS Safari; Android Chrome won't share .lrc).
 const canShareLrc = !!navigator.canShare?.({ files: [lrcFile('', 'x.lrc')] });
+// Save menu icons: strokes in the text colour (glyphs like ⤓ differ by platform; emoji ignore the colour).
+const icon = (d: string) => (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
 
 function App() {
   const audio = useRef<HTMLAudioElement>(null);
@@ -175,13 +182,19 @@ function App() {
           </button>
           {saveMenu && (
             <div className="demo-more-panel">
-              <button type="button" onClick={download}>Download {lrcName}</button>
+              <button type="button" onClick={download}>
+                {icon('M12 3v12m-5-5 5 5 5-5M5 21h14')} Download {lrcName}
+              </button>
               {canShareLrc && (
                 <button type="button" onClick={share}>
-                  Share… <small>Save to Files, AirDrop, Mail</small>
+                  {icon('M12 15V3M8 7l4-4 4 4M8 11H6v10h12V11h-2')} Share…
                 </button>
               )}
-              {navigator.clipboard && <button type="button" onClick={copy}>{copied || 'Copy the LRC text'}</button>}
+              {navigator.clipboard && (
+                <button type="button" onClick={copy}>
+                  {icon('M9 9h11v11H9zM5 15H4V4h11v1')} {copied || 'Copy the LRC text'}
+                </button>
+              )}
             </div>
           )}
         </div>
