@@ -12,9 +12,16 @@ async function load(page: Page) {
 }
 
 async function downloadText(page: Page) {
+  // Note the type of the file's blob URL.
+  await page.evaluate(() => {
+    const create = URL.createObjectURL;
+    URL.createObjectURL = (o) => ((document.body.dataset.blobType = (o as Blob).type), create(o));
+  });
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: /Download/ }).click();
   const file = await download;
+  // octet-stream: with text/plain, iOS Safari can open the file in place of the page and lose the edits.
+  expect(await page.evaluate(() => document.body.dataset.blobType)).toBe('application/octet-stream');
   let text = '';
   for await (const chunk of await file.createReadStream()) text += chunk;
   return { name: file.suggestedFilename(), text };

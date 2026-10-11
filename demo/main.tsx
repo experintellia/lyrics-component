@@ -91,10 +91,12 @@ function App() {
 
   const download = () => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([lrc], { type: 'text/plain;charset=utf-8' }));
+    // octet-stream, not text/plain: a type the browser can't display is always saved. With text/plain, iOS Safari
+    // may offer "View" or ignore `download` and open the text in this tab, which drops the page and its edits.
+    a.href = URL.createObjectURL(new Blob([lrc], { type: 'application/octet-stream' }));
     a.download = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + '.lrc';
     a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setTimeout(() => URL.revokeObjectURL(a.href), 40_000); // iOS asks "Download?" first; the URL must outlive that
     setSaved(lrc);
   };
 
