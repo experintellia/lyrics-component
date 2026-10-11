@@ -31,6 +31,19 @@ const ago = (t: number) => {
 };
 const isPlain = (lrc: string) => parseLrc(lrc).lines.every((l) => l.timeMs === null);
 const clock = (ms: number) => formatTime(ms).slice(0, 5); // mm:ss
+// Saved files are octet-stream, not text/plain or XML: a type the browser can't display is always saved. With
+// text/plain, iOS Safari may offer "View" or ignore `download` and open the text in this tab (dropping the page and
+// its edits), and it saves it as .lrc.txt.
+const octetFile = (text: string, name: string) => new File([text], name, { type: 'application/octet-stream' });
+// Share… only where the Web Share API can share files (iOS/macOS Safari; Android Chrome won't share .lrc).
+const canShareLrc = !!navigator.canShare?.({ files: [octetFile('', 'x.lrc')] });
+// Save menu icons: strokes in the text colour (glyphs like ⤓ differ by platform; emoji ignore the colour).
+const icon = (d: string) => (
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
 
 function App() {
   const audio = useRef<HTMLAudioElement>(null);
@@ -43,6 +56,8 @@ function App() {
   const [saved, setSaved] = useState(''); // what's on disk (loaded or downloaded); differs = unsaved edits
   const [loads, setLoads] = useState(0); // lyrics files loaded; part of the editor key
   const [tab, setTab] = useState<'preview' | 'edit'>('edit'); // no lyrics yet: edit
+  const [saveMenu, setSaveMenu] = useState(false);
+  const [copied, setCopied] = useState(''); // Copy's result, shown on the button until the menu closes
   const [offsetMs, setOffsetMs] = useState(() => tryStorage(() => Number(localStorage.getItem(OFFSET_KEY)) || 0, 0));
   const [drafts, setDrafts] = useState(readDrafts);
   const newest = Object.entries(drafts).sort(([, a], [, b]) => b.at - a.at);
@@ -156,20 +171,37 @@ function App() {
     setTab(isPlain(text) ? 'edit' : 'preview'); // plain text needs syncing first
   };
 
-  const save = (text: string, ext: string, type: string) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
-    a.download = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + ext;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // Save menu: Download, Share… (the share sheet never leaves the page and resolves only once the file went
+  // somewhere, so cancelling keeps "unsaved changes"), Copy (the clipboard isn't a save: still unsaved).
+  const baseName = file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics';
+  const lrcName = baseName + '.lrc';
+  const toggleSaveMenu = (open: boolean) => {
+    setSaveMenu(open);
+    setCopied('');
   };
-  const download = () => {
-    save(lrc, '.lrc', 'text/plain');
+  const saveFile = (text: string, name: string) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(octetFile(text, name));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 40_000); // iOS asks "Download?" first; the URL must outlive that
+  };
+  const markSaved = () => {
     setSaved(lrc);
     if (drafts[draftKey]?.lrc === lrc) dropDraft(draftKey); // on disk now
   };
+  const download = () => {
+    saveFile(lrc, lrcName);
+    markSaved(); // ponytail: a link can't tell if iOS's prompt was cancelled; Share can
+    toggleSaveMenu(false);
+  };
+  const share = () => {
+    navigator.share({ files: [octetFile(lrc, lrcName)] }).then(markSaved, (e) => console.warn(e)); // rejected: cancelled
+    toggleSaveMenu(false);
+  };
+  const copy = () => navigator.clipboard.writeText(lrc).then(() => setCopied('Copied ✓'), () => setCopied('Copy failed'));
   // An export, not a save: TTML can't be loaded back, so the LRC stays "unsaved".
-  const downloadTtml = () => save(serializeTtml(parseLrc(lrc), { durationMs: position.durationMs }), '.ttml', 'application/ttml+xml');
+  const downloadTtml = () => saveFile(serializeTtml(parseLrc(lrc), { durationMs: position.durationMs }), baseName + '.ttml');
 
   const props = { lrc, position, onSeek, peaks, offsetMs };
   // Typing lyrics doesn't end the empty state: collapsing the header on the textarea's blur would move Next
@@ -212,17 +244,38 @@ function App() {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="demo-download"
-          data-primary={(lines.length > 0 && stamped === lines.length) || undefined}
-          disabled={!stamped}
-          title={stamped ? undefined : 'Sync at least one line first'}
-          onClick={download}
-        >
-          Download .lrc
-          {dirty && stamped > 0 && <small>unsaved changes</small>}
-        </button>
+        {/* ponytail: closes on a choice or a second tap, not on a tap elsewhere (like ⚙). */}
+        <div className="demo-save">
+          <button
+            type="button"
+            className="demo-download"
+            aria-expanded={saveMenu}
+            data-primary={(lines.length > 0 && stamped === lines.length) || undefined}
+            disabled={!stamped}
+            title={stamped ? undefined : 'Sync at least one line first'}
+            onClick={() => toggleSaveMenu(!saveMenu)}
+          >
+            Save .lrc ▾
+            {dirty && stamped > 0 && <small>unsaved changes</small>}
+          </button>
+          {saveMenu && stamped > 0 && ( // hidden too once Save is disabled (e.g. a plain .txt loaded meanwhile)
+            <div className="demo-more-panel">
+              <button type="button" onClick={download}>
+                {icon('M12 3v12m-5-5 5 5 5-5M5 21h14')} Download {lrcName}
+              </button>
+              {canShareLrc && (
+                <button type="button" onClick={share}>
+                  {icon('M12 15V3M8 7l4-4 4 4M8 11H6v10h12V11h-2')} Share…
+                </button>
+              )}
+              {navigator.clipboard && (
+                <button type="button" onClick={copy}>
+                  {icon('M9 9h11v11H9zM5 15H4V4h11v1')} {copied || 'Copy the LRC text'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         {/* ponytail: offset is a rare per-device setting and TTML a rare export, so they hide behind a disclosure. */}
         <details className="demo-more">
           <summary aria-label="Settings" title="Settings">
