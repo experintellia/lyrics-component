@@ -4,6 +4,7 @@ import { LyricsEditor, LyricsView, displayText, formatTime, isShortcut, parseLrc
 // Like a host importing '@experintellia/lyrics/style.css' (src/index.ts has no CSS imports).
 import '../src/view.css';
 import '../src/editor.css';
+import { serializeTtml } from '../src/ttml';
 import { decodeText } from './decodeText';
 import './demo.css';
 
@@ -89,14 +90,19 @@ function App() {
     setTab(isPlain(text) ? 'edit' : 'preview'); // plain text needs syncing first
   };
 
-  const download = () => {
+  const save = (text: string, ext: string, type: string) => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([lrc], { type: 'text/plain;charset=utf-8' }));
-    a.download = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + '.lrc';
+    a.href = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+    a.download = (file ? file.name.replace(/\.[^.]*$/, '') : 'lyrics') + ext;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  const download = () => {
+    save(lrc, '.lrc', 'text/plain');
     setSaved(lrc);
   };
+  // An export, not a save: TTML can't be loaded back, so the LRC stays "unsaved".
+  const downloadTtml = () => save(serializeTtml(parseLrc(lrc), { durationMs: position.durationMs }), '.ttml', 'application/ttml+xml');
 
   const props = { lrc, position, onSeek, peaks, offsetMs };
   // Typing lyrics doesn't end the empty state: collapsing the header on the textarea's blur would move Next
@@ -150,7 +156,7 @@ function App() {
           Download .lrc
           {dirty && stamped > 0 && <small>unsaved changes</small>}
         </button>
-        {/* ponytail: offset is a rare per-device setting, so it hides behind a disclosure. */}
+        {/* ponytail: offset is a rare per-device setting and TTML a rare export, so they hide behind a disclosure. */}
         <details className="demo-more">
           <summary aria-label="Settings" title="Settings">
             ⚙<span className="demo-wide"> Settings</span>
@@ -170,6 +176,9 @@ function App() {
               />
             </label>
             <small>Positive if the lyrics run ahead of what you hear (e.g. Bluetooth headphones).</small>
+            {/* Here, not next to Download .lrc: the nav has no room for it on phones. */}
+            <button type="button" disabled={!stamped} onClick={downloadTtml}>Download .ttml</button>
+            <small>Timed Text, e.g. for Apple Music. Export only: keep the .lrc to edit later.</small>
             {__COMMIT__.hash && (
               <small>
                 Version{' '}

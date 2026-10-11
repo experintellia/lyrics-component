@@ -90,6 +90,14 @@ describe('editor reducer', () => {
     expect(s.past).toHaveLength(2);
   });
 
+  it('nudge clamped at 0 changes nothing: no undo step (line and word step)', () => {
+    const s = run('[00:00.00]<00:00.00>a <00:00.00>b');
+    expect(reducer(s, { t: 'nudge', d: -10 })).toBe(s);
+    const w = reducer(reducer(s, { t: 'step', step: 'words' }), { t: 'pickWord', w: 1 });
+    expect(reducer(w, { t: 'nudge', d: -10 })).toBe(w);
+    expect(out(reducer(s, { t: 'nudge', d: 10 }))).toBe('[00:00.01]<00:00.01>a <00:00.01>b\n');
+  });
+
   it('word step: ↑/↓ choose words, crossing into the previous/next line', () => {
     let s = run('a b\n\nc d', { t: 'step', step: 'words' }, { t: 'moveWord', d: 1 });
     expect([s.sel, s.word]).toEqual([0, 1]);
