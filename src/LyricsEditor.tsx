@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type Dispatch } from 'react';
 import { usePlaybackTime } from './clock';
 import { hasText, hasWordTimes, initState, reducer, words, type Action, type Step } from './editorModel';
-import { displayText, formatTime, parseLrc, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
+import { displayText, formatTime, lineSpan, parseLrc, sections, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
 import type { LyricsProps } from './types';
 import { LyricsView } from './LyricsView';
-import { bandColor, lineSpan, sections, Waveform, wordMarks } from './Waveform';
+import { bandColor, Waveform, wordMarks } from './Waveform';
 
 const STEPS: [Step, string, string?][] = [
   ['lyrics', 'Lyrics'],
@@ -55,6 +55,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   seekRef.current = seek;
 
   // --- onChange: every doc change right away. Text becomes a doc change on blur or after 500 ms idle.
+  // Pending text is also flushed on unmount, pagehide and visibilitychange to hidden.
   const last = useRef(lrc); // last string received from or emitted to the host
   const cb = useRef(onChange);
   cb.current = onChange;
@@ -77,16 +78,24 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     const t = setTimeout(() => dispatch({ t: 'commit' }), 500);
     return () => clearTimeout(t);
   }, [s.draft]);
-  // Unmount (e.g. host remounts on track change): don't lose text typed in the last 500 ms.
+  // Unmount (e.g. host remounts on track change), page hide/close, or tab backgrounded (mobile may kill it
+  // unannounced): don't lose text typed in the last 500 ms.
   const latest = useRef(s);
   latest.current = s;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const flush = () => {
       const c = reducer(latest.current, { t: 'commit' });
       if (c !== latest.current) emit(c.doc);
-    },
-    [],
-  );
+    };
+    const onHide = () => document.visibilityState === 'hidden' && flush();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHide);
+      flush();
+    };
+  }, []);
 
   // Pasted LRC goes through the reducer (the textarea gets a new value), so put the caret back after it.
   const caretFromEnd = useRef<number | null>(null);
@@ -120,6 +129,8 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   const canStamp = wordStep ? s.word < ws.length : !!line;
   const ms = Math.max(0, Math.round(audibleMs));
   const stamp = () => canStamp && dispatch(wordStep ? { t: 'stampWord', ms } : { t: 'stamp', ms });
+  // ↺ jumps back 5 s of listening: at 0.5× that's 2.5 s of the song (rounded to 0.1 s, so it matches its label).
+  const backS = Math.round(50 * (position.rate ?? 1)) / 10;
   const textLines = lines.filter(hasText);
   const lineNo = lines.slice(0, s.sel + 1).filter(hasText).length;
   const wordsDone = textLines.filter((l) => timedWords(l) === words(l).length).length;
@@ -157,6 +168,8 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     else if (s.step === 'lyrics' || mod || e.altKey) return;
     else if (k === 's' || k === 'enter') !e.repeat && stamp();
     else if (k === 'arrowup' || k === 'arrowdown') dispatch({ t: wordStep ? 'moveWord' : 'move', d: k === 'arrowup' ? -1 : 1 });
+    // ←/→ nudge 10 ms, Shift 100 ms. Wins over a clicked slider's native ←/→, as ↑/↓ already do.
+    else if (k === 'arrowleft' || k === 'arrowright') dispatch({ t: 'nudge', d: (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 100 : 10) });
     else return;
     e.preventDefault();
   };
@@ -346,6 +359,16 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
                   ? 'Type or paste at least one line to continue.'
                   : 'Load the song and add at least one line to continue.'}
             </p>
+            {/* Transcribing: hear the last bit again. preventDefault keeps the caret in the box (no blur, no iOS keyboard hide). */}
+            <button
+              type="button"
+              aria-label={`Back ${backS} s`} // contains the visible "5 s", for voice control
+              disabled={!dur}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => seek(Math.max(0, audibleMs - backS * 1000))}
+            >
+              ↺ {backS} s
+            </button>
             {undoRedo}
             <button
               type="button"
@@ -365,7 +388,8 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
               ? `${wordsDone} of ${textLines.length} lines have word timing. Tap a line or word to play from it. Words are quick: set the playback speed to 0.5×.`
               : 'Tap a line to play from its time. Too late? Drag the waveform back or nudge −0.1 s. For precise timing, set the playback speed to 0.5×.'}
             <span className="lyrics-editor-hint">
-              {' '}Keys: S or Enter = Stamp · ↑/↓ = choose {wordStep ? 'word' : 'line'} · Ctrl/⌘+Z = undo. Shortcuts work
+              {' '}Keys: S or Enter = Stamp · ↑/↓ = choose {wordStep ? 'word' : 'line'} · ←/→ = nudge 0.01 s
+              (Shift: 0.1 s) · Ctrl/⌘+Z = undo. Shortcuts work
               anywhere except while typing.
             </span>
           </p>
@@ -461,7 +485,7 @@ function LineTools({ line, dispatch, seek, resume }: ToolProps) {
         {back}
       </div>
     );
-  // ponytail: ±0.1 s only; finer steps aren't audible (the roadmap's ±10 ms were dropped after user review).
+  // ponytail: buttons are ±0.1 s only, to keep phones uncrowded; the handoff's ±10 ms is on ←/→ (no button).
   return (
     <div className="lyrics-editor-tools" role="group" aria-label="Fix this line">
       <p className="lyrics-editor-tip">

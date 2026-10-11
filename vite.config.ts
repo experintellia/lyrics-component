@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => ({
         build: {
           outDir: 'dist',
           lib: {
-            entry: { index: 'src/index.ts', lrc: 'src/lrc.ts', styles: 'src/styles.ts' },
+            entry: { index: 'src/index.ts', lrc: 'src/lrc.ts', ttml: 'src/ttml.ts', styles: 'src/styles.ts' },
             formats: ['es'],
             cssFileName: 'lyrics',
           },
