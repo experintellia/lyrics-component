@@ -1,6 +1,6 @@
 import { jsx, jsxs, Fragment } from "react/jsx-runtime";
 import { useRef, useState, useLayoutEffect, useEffect, useMemo, memo, Fragment as Fragment$1, useReducer } from "react";
-import { parseLrc, lineWords, displayText, setLineTime, joinWords, formatTime, serializeLrc } from "./lrc.js";
+import { parseLrc, lineWords, displayText, setLineTime, joinWords, sections, lineSpan, formatTime, serializeLrc } from "./lrc.js";
 const SNAP_MS = 300;
 const CAP_MS = 500;
 const SEEK_HOLD_MS = 1e3;
@@ -349,34 +349,6 @@ const bandColor = (k) => {
   const [v, hue] = section(k);
   return `var(${v}, hsl(${hue} 75% 50% / 0.7))`;
 };
-const LABEL = /^\[.+\]$/;
-const isLabel = (l) => l.timeMs === null && LABEL.test(displayText(l.text));
-const stampFrom = (lines, i, end) => {
-  var _a;
-  return ((_a = lines.slice(i).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs) ?? end;
-};
-function sections(lines, durationMs = Infinity) {
-  var _a;
-  const out = [];
-  for (let i = 0; i < lines.length; ) {
-    if (!displayText(lines[i].text)) {
-      i++;
-      continue;
-    }
-    let j = i + 1;
-    while (j < lines.length && displayText(lines[j].text) && !isLabel(lines[j])) j++;
-    const start = (_a = lines.slice(i, j).find((l) => l.timeMs !== null)) == null ? void 0 : _a.timeMs;
-    const label = isLabel(lines[i]) ? displayText(lines[i].text).slice(1, -1) : "";
-    if (start != null) out.push({ startMs: start, endMs: Math.max(start, stampFrom(lines, j, durationMs)), label, from: i, to: j });
-    i = j;
-  }
-  return out;
-}
-function lineSpan(lines, i, durationMs = Infinity) {
-  var _a;
-  const t = (_a = lines[i]) == null ? void 0 : _a.timeMs;
-  return t == null ? null : [t, Math.max(t, stampFrom(lines, i + 1, durationMs))];
-}
 const FIT_MARGIN = 500;
 const FIT_MAX = 15e3;
 function viewWindow(centreMs, spanMs, fit, widen = 1) {

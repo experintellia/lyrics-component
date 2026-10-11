@@ -26,7 +26,31 @@ React 19 is a peer dependency. There are no other runtime dependencies.
 import { LyricsView, LyricsEditor, peaksFromAudio } from '@experintellia/lyrics';
 import '@experintellia/lyrics/style.css';
 import { parseLrc, serializeLrc, lineWords, joinWords } from '@experintellia/lyrics/lrc'; // no React
+import { serializeTtml } from '@experintellia/lyrics/ttml'; // no React
 ```
+
+## TTML export
+
+`serializeTtml(parseLrc(lrc), { durationMs, lang })` turns synced lyrics into [TTML](https://www.w3.org/TR/ttml2/)
+in the shape Apple Music uses (export only; there is no TTML import):
+
+- `<tt itunes:timing="Word">` if any line has word tags, else `"Line"`; `xml:lang` from `lang` (empty if not given).
+  `[ti:]` becomes `<ttm:title>` and `[ar:]` a `<ttm:agent>` in `<head><metadata>`; other tags are dropped.
+- One `<div>` per section, by the same rules as the waveform bands. A label line such as `[Chorus]` becomes
+  `itunes:song-part="Chorus"` (namespace `http://music.apple.com/lyric-ttml-internal`, Apple's own).
+- One `<p begin end>` per stamped line, ending at the next stamp (a stamped gap ends it and is not written), the
+  last one at `durationMs`. Without `durationMs` the last line ends at its trailing word tag, or has no `end`
+  (runs to the end of the media). Unstamped lines are skipped; a document with no stamped line throws.
+- In a word-timed line, one `<span begin end>` per timed word or syllable, ending at the next one, the trailing
+  end tag, or the line's end. Untimed words join the timed span before them (phrase timing); untimed words
+  before the first tag start with the line.
+- Times are `HH:MM:SS.mmm` (TTML's full clock-time form; Apple's own files often use the shorter `M:SS.mmm`) and
+  absolute at every level, as in Apple's files. A strict TTML reader takes a child's `begin` as relative to its
+  parent (`par` time containment), so it would place spans late. Out-of-order word tags are clamped into their
+  line, so nothing ends before it begins. Characters XML 1.0 can't hold (control characters) are dropped.
+
+Limits: no duet or background-vocal agents per line, no translations, no styling. The demo's ⚙ panel has
+"Download .ttml".
 
 ## What it shows
 

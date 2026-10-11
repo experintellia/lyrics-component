@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type Dispatch } from 'react';
 import { usePlaybackTime } from './clock';
 import { hasText, hasWordTimes, initState, reducer, words, type Action, type Step } from './editorModel';
-import { displayText, formatTime, parseLrc, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
+import { displayText, formatTime, lineSpan, parseLrc, sections, serializeLrc, type LrcDoc, type LrcLine } from './lrc';
 import type { LyricsProps } from './types';
 import { LyricsView } from './LyricsView';
-import { bandColor, lineSpan, sections, Waveform, wordMarks } from './Waveform';
+import { bandColor, Waveform, wordMarks } from './Waveform';
 
 const STEPS: [Step, string, string?][] = [
   ['lyrics', 'Lyrics'],
