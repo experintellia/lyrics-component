@@ -166,11 +166,19 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     return () => window.removeEventListener('keydown', h, true);
   }, []);
 
-  // Keep the selected line in view (CSS scroll-margin keeps it clear of the sticky Stamp button). Also on
-  // doc changes: stamping the last line keeps it selected but adds its tools, so the row grows.
+  // Keep the selected line clear of the sticky head and Stamp dock (CSS scroll-margin sets the gap). Not
+  // block: 'nearest': Chromium skips scroll-margin for a row already in the viewport, i.e. under the head.
+  // Also on doc changes: stamping the last line keeps it selected but adds its tools, so the row grows.
   const list = useRef<HTMLOListElement>(null);
   useEffect(() => {
-    list.current?.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest' });
+    const row = list.current?.querySelector('[aria-current]');
+    const ed = row?.closest('.lyrics-editor');
+    if (!row?.scrollIntoView || !ed) return;
+    const r = row.getBoundingClientRect();
+    const top = Math.max(0, ed.querySelector('.lyrics-editor-head')!.getBoundingClientRect().bottom);
+    const bottom = Math.min(innerHeight, ed.querySelector('.lyrics-editor-dock')!.getBoundingClientRect().top);
+    if (r.top < top) row.scrollIntoView({ block: 'start' });
+    else if (r.bottom > bottom) row.scrollIntoView({ block: r.height > bottom - top ? 'start' : 'end' }); // too tall: top
   }, [s.sel, s.step, lines]);
 
   // The editor re-renders every animation frame while playing; the list only when its inputs change.
