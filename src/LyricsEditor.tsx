@@ -55,6 +55,7 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
   seekRef.current = seek;
 
   // --- onChange: every doc change right away. Text becomes a doc change on blur or after 500 ms idle.
+  // Pending text is also flushed on unmount, pagehide and visibilitychange to hidden.
   const last = useRef(lrc); // last string received from or emitted to the host
   const cb = useRef(onChange);
   cb.current = onChange;
@@ -77,16 +78,24 @@ function Editor({ lrc, onChange, position, onSeek, peaks, offsetMs = 0 }: Lyrics
     const t = setTimeout(() => dispatch({ t: 'commit' }), 500);
     return () => clearTimeout(t);
   }, [s.draft]);
-  // Unmount (e.g. host remounts on track change): don't lose text typed in the last 500 ms.
+  // Unmount (e.g. host remounts on track change), page hide/close, or tab backgrounded (mobile may kill it
+  // unannounced): don't lose text typed in the last 500 ms.
   const latest = useRef(s);
   latest.current = s;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const flush = () => {
       const c = reducer(latest.current, { t: 'commit' });
       if (c !== latest.current) emit(c.doc);
-    },
-    [],
-  );
+    };
+    const onHide = () => document.visibilityState === 'hidden' && flush();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHide);
+      flush();
+    };
+  }, []);
 
   // Pasted LRC goes through the reducer (the textarea gets a new value), so put the caret back after it.
   const caretFromEnd = useRef<number | null>(null);
