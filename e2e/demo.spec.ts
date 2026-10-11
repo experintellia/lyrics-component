@@ -302,6 +302,22 @@ test('pasting LRC into the Lyrics box keeps its timing and says so', async ({ pa
   await expect(page.locator('.lyrics-editor-time')).toHaveText(['00:00.50', '00:02.00', '00:03.50']);
 });
 
+test('transcribing: ↺ 5 s seeks the audio back and the caret stays in the Lyrics box', async ({ page }) => {
+  await page.goto('/');
+  await loadAudio(page, 10);
+  await seek(page, 8);
+  const box = page.getByLabel('Lyrics text');
+  await box.fill('First line');
+  await expect(page.getByLabel('Seek')).toHaveValue('8000'); // the seek reached the editor's position
+  await page.getByRole('button', { name: 'Back 5 s' }).click();
+  await expect.poll(() => audioTime(page)).toBeCloseTo(3, 1);
+  await expect(box).toBeFocused();
+  await page.keyboard.type('!');
+  await expect(box).toHaveValue('First line!');
+  await page.getByLabel('Playback speed').selectOption('0.5'); // 5 s of listening = 2.5 s of song
+  await expect(page.getByRole('button', { name: 'Back 2.5 s' })).toHaveText('↺ 2.5 s');
+});
+
 const mute = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => (a.muted = true)); // headless WebKit won't play unmuted
 const paused = (page: Page) => page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused);
 

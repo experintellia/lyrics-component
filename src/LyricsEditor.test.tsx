@@ -334,6 +334,36 @@ describe('Sync lines', () => {
     expect(rows().map((r) => r.hasAttribute('data-late'))).toEqual([false, false]);
   });
 
+  it('Lyrics step: ↺ 5 s seeks back 5 s (clamped at 0, + offsetMs) without taking focus; off with no song', () => {
+    render({ position: pos(12_000), offsetMs: 200 });
+    click(tab('Lyrics'));
+    const back = $$('button').find((b) => b.ariaLabel === 'Back 5 s')!;
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(7_000); // audible 11.8 s − 5 s, + 200 ms
+    const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
+    act(() => void back.dispatchEvent(ev));
+    expect(ev.defaultPrevented).toBe(true);
+    render({ position: pos(7_000) }); // the host lands
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(2_000);
+    render({ position: pos(2_000) });
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(200); // audible 0 + offsetMs
+    render({ position: pos(0, 0) });
+    expect(back.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('Lyrics step: the jump back scales with playback rate (5 s of listening)', () => {
+    render({ position: { ...pos(10_000), rate: 0.5 } });
+    click(tab('Lyrics'));
+    const back = $$('button').find((b) => b.ariaLabel?.startsWith('Back'))!;
+    expect([back.textContent, back.ariaLabel]).toEqual(['↺ 2.5 s', 'Back 2.5 s']);
+    click(back);
+    expect(onSeek).toHaveBeenLastCalledWith(7_500);
+    render({ position: { ...pos(7_500), rate: 0.75 } });
+    expect(back.textContent).toBe('↺ 3.8 s'); // 3.75, rounded for the label
+  });
+
   it('stamp button prevents default on pointerdown (keeps focus / no iOS keyboard)', () => {
     render();
     const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
