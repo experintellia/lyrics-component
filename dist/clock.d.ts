@@ -10,6 +10,8 @@ export interface ClockState {
     seekUntil: number;
     fresh: boolean;
 }
+/** The host's playback rate; 0, NaN or absent count as 1 (e.g. a native player reporting rate 0 while paused). */
+export declare const rateOf: (p: Position) => number;
 export declare function clockTime(s: ClockState, now: number): number;
 export declare function startClock(p: Position, now: number): ClockState;
 export declare function tick(s: ClockState, p: Position, now: number): ClockState;

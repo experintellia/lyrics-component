@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { audioTime, loadAudio, loadLyrics, pasteOver, seek } from './fixtures';
+import { audioTime, loadAudio, loadLyrics, pasteOver, seek, wav } from './fixtures';
 
 const LRC = '[ti:Tone]\n[00:00.50]First line\n[00:02.00]Second line\n[00:03.50]Third line\n';
 
@@ -151,6 +151,35 @@ test('Save menu: Share… sends the .lrc (cancelling keeps "unsaved changes"); C
   await loadLyrics(page, 'plain.txt', 'no timing yet'); // nothing synced: Save is disabled, its menu goes too
   await expect(save).toBeDisabled();
   await expect(share).toBeHidden();
+});
+
+test('Save and ⚙ menus: Esc closes them; a choice hands focus back to Save', async ({ page }) => {
+  await load(page);
+  const save = page.getByRole('button', { name: /^Save \.lrc/ });
+  const download = page.getByRole('button', { name: /^Download \S+\.lrc$/ });
+  await save.click();
+  await download.focus();
+  await page.keyboard.press('Escape');
+  await expect(download).toBeHidden();
+  await expect(save).toBeFocused();
+  await downloadText(page); // opens the menu, picks Download
+  await expect(download).toBeHidden();
+  await expect(save).toBeFocused(); // not dropped to <body> with the closed panel
+
+  await page.getByTitle('Settings').click();
+  await page.getByLabel('Audio delay (ms)').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('details.demo-more')).not.toHaveAttribute('open');
+  await expect(page.getByTitle('Settings')).toBeFocused();
+});
+
+test("audio the browser can't decode: no waveform, and the demo says why", async ({ page }) => {
+  await page.goto('/');
+  const hint = page.getByText(/^No waveform: this browser can't decode the audio/);
+  await page.getByLabel('Audio file').setInputFiles({ name: 'broken.wav', mimeType: 'audio/wav', buffer: wav(1).subarray(0, 20) }); // header cut off
+  await expect(hint).toBeVisible();
+  await loadAudio(page); // a real file: decodes, so the hint goes
+  await expect(hint).toHaveCount(0);
 });
 
 test('TTML export: sync a line and its words, download .ttml with <p> and <span> timing', async ({ page }) => {

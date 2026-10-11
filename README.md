@@ -143,7 +143,7 @@ accent colour. For precise stamps, let the user slow playback down and report it
 interface LyricsProps {
   lrc: string;                         // LRC or plain text; "" = none
   onChange?: (lrc: string) => void;    // editor only; absent = read-only
-  position: { timeMs: number; playing: boolean; durationMs: number; rate?: number }; // rate: default 1
+  position: { timeMs: number; playing: boolean; durationMs: number; rate?: number }; // rate: default 1 (0 counts as 1)
   onSeek: (timeMs: number) => void;    // a request; may take up to ~1 s to apply
   peaks?: { min: Float32Array; max: Float32Array; msPerBucket: number };
   offsetMs?: number;                   // output latency compensation, per device

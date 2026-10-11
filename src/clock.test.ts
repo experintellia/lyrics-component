@@ -108,6 +108,12 @@ describe('clock state machine', () => {
     expect(clockTime(s, 5_000)).toBe(10_250);
   });
 
+  it('rate 0 or NaN counts as 1 (a native player may report 0 while paused)', () => {
+    for (const rate of [0, NaN]) expect(clockTime(startClock({ ...pos(10_000), rate }, 0), 200)).toBe(10_200);
+    const s = startClock(pos(10_000), 0);
+    expect(tick(s, { ...pos(10_000), rate: 0 }, 100)).toBe(s); // same rate: not a new tick
+  });
+
   it('a rate change with the same timeMs re-bases interpolation', () => {
     const s = tick(startClock(pos(10_000), 0), { ...pos(10_000), rate: 0.5 }, 0);
     expect(clockTime(s, 200)).toBe(10_100);
@@ -175,6 +181,11 @@ describe('usePlaybackTime', () => {
     expect(onSeek).toHaveBeenCalledWith(30_100);
     await step(16); // frames already running: the next one shows the held target
     expect(out.audibleMs).toBe(30_000);
+  });
+
+  it('rate 0: offsetMs counts in full, as at rate 1', async () => {
+    await render({ ...pos(10_000), rate: 0 }, 200);
+    expect(out.audibleMs).toBe(9_800);
   });
 
   it('runs no frames while paused', async () => {
