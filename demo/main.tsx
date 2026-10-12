@@ -252,7 +252,8 @@ function App() {
           <label>
             <span className="demo-file-kind">Lyrics</span> <span className="demo-file-name">{lyricsInfo}</span>
             <span className="demo-pick">{fresh ? 'Load .lrc or .txt…' : 'Load file…'}</span>
-            <input type="file" className="demo-sr" aria-label="Lyrics file" accept=".lrc,.txt,text/plain"
+            {/* No accept: iOS knows no type for .lrc, so any filter greys .lrc out and leaves only .txt pickable. */}
+            <input type="file" className="demo-sr" aria-label="Lyrics file"
               onChange={(e) => e.target.files?.[0] && loadLyrics(e.target.files[0])} />
           </label>
           {fresh && <small>Or type or paste them in the editor below.</small>}
