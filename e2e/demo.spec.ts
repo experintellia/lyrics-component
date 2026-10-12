@@ -28,6 +28,21 @@ async function downloadText(page: Page, button?: string) {
   return { name: file.suggestedFilename(), text };
 }
 
+test('lyrics picker: only .lrc/.txt load (the input has no accept filter, for iOS)', async ({ page }) => {
+  await load(page);
+  await expect(page.getByLabel('Lyrics file')).not.toHaveAttribute('accept'); // iOS greys out .lrc under any filter
+  await loadLyrics(page, 'song.mp3', 'not lyrics');
+  await expect(page.getByText("Not loaded: song.mp3 isn't a .lrc or .txt file.")).toBeVisible();
+  await expect(page.locator('.lyrics-line')).toHaveText(['First line', 'Second line', 'Third line']); // kept
+  await loadLyrics(page, 'song.ttml', '<tt/>');
+  await expect(page.getByRole('alert')).toHaveText('Not loaded: song.ttml is TTML, which is export only. Load the .lrc you saved.');
+  await loadLyrics(page, 'tone.TXT', 'Plain');
+  await expect(page.getByRole('alert')).toBeHidden();
+  await expect(page.locator('.demo-file label').nth(1)).toContainText('tone.TXT');
+  await loadLyrics(page, 'Unknown', '[00:01.00]Saved on iOS\n'); // iOS Safari's name for a downloaded blob
+  await expect(page.locator('.demo-file label').nth(1)).toContainText('Unknown');
+});
+
 test('empty state: audio and optional lyrics pickers; type lyrics, then Next goes to syncing', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.demo-file label')).toHaveText([/^Audio Choose audio file/, /^Lyrics \(optional\)/]);

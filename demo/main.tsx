@@ -54,6 +54,7 @@ function App() {
   const [url, setUrl] = useState('');
   const [peaks, setPeaks] = useState<Peaks>();
   const [noPeaks, setNoPeaks] = useState(false); // decoding failed: say why the waveform is missing
+  const [notLyrics, setNotLyrics] = useState(''); // name of a picked file that isn't .lrc/.txt (the picker can't filter)
   const [position, setPosition] = useState<Position>({ timeMs: 0, playing: false, durationMs: 0 });
   const [lrc, setLrc] = useState('');
   const [lyricsName, setLyricsName] = useState(''); // loaded lyrics file, '' = typed
@@ -173,6 +174,10 @@ function App() {
   }, []);
 
   const loadLyrics = async (f: File) => {
+    // No extension is fine too: iOS Safari names this demo's own downloads "Unknown".
+    const ok = /\.(lrc|txt)$/i.test(f.name) || !/\.[^.]+$/.test(f.name);
+    setNotLyrics(ok ? '' : f.name);
+    if (!ok) return;
     const text = decodeText(await f.arrayBuffer());
     setLrc(text);
     setSaved(text);
@@ -252,9 +257,19 @@ function App() {
           <label>
             <span className="demo-file-kind">Lyrics</span> <span className="demo-file-name">{lyricsInfo}</span>
             <span className="demo-pick">{fresh ? 'Load .lrc or .txt…' : 'Load file…'}</span>
-            <input type="file" className="demo-sr" aria-label="Lyrics file" accept=".lrc,.txt,text/plain"
-              onChange={(e) => e.target.files?.[0] && loadLyrics(e.target.files[0])} />
+            {/* No accept: iOS knows no type for .lrc, so any filter greys .lrc out and leaves only .txt pickable. */}
+            <input type="file" className="demo-sr" aria-label="Lyrics file"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = ''; // so picking the same file again (e.g. to revert edits) fires onChange
+                if (f) loadLyrics(f);
+              }} />
           </label>
+          {notLyrics && (
+            <small role="alert">
+              Not loaded: {notLyrics} {/\.ttml$/i.test(notLyrics) ? 'is TTML, which is export only. Load the .lrc you saved.' : "isn't a .lrc or .txt file."}
+            </small>
+          )}
           {fresh && <small>Or type or paste them in the editor below.</small>}
         </div>
       </header>
