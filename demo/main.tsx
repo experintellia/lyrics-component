@@ -174,7 +174,8 @@ function App() {
   }, []);
 
   const loadLyrics = async (f: File) => {
-    const ok = /\.(lrc|txt)$/i.test(f.name);
+    // No extension is fine too: iOS Safari names this demo's own downloads "Unknown".
+    const ok = /\.(lrc|txt)$/i.test(f.name) || !/\.[^.]+$/.test(f.name);
     setNotLyrics(ok ? '' : f.name);
     if (!ok) return;
     const text = decodeText(await f.arrayBuffer());
@@ -258,9 +259,17 @@ function App() {
             <span className="demo-pick">{fresh ? 'Load .lrc or .txt…' : 'Load file…'}</span>
             {/* No accept: iOS knows no type for .lrc, so any filter greys .lrc out and leaves only .txt pickable. */}
             <input type="file" className="demo-sr" aria-label="Lyrics file"
-              onChange={(e) => e.target.files?.[0] && loadLyrics(e.target.files[0])} />
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = ''; // so picking the same file again (e.g. to revert edits) fires onChange
+                if (f) loadLyrics(f);
+              }} />
           </label>
-          {notLyrics && <small>Not loaded: {notLyrics} isn't a .lrc or .txt file.</small>}
+          {notLyrics && (
+            <small role="alert">
+              Not loaded: {notLyrics} {/\.ttml$/i.test(notLyrics) ? 'is TTML, which is export only. Load the .lrc you saved.' : "isn't a .lrc or .txt file."}
+            </small>
+          )}
           {fresh && <small>Or type or paste them in the editor below.</small>}
         </div>
       </header>
