@@ -132,6 +132,8 @@ test('Save menu: Share… sends the .lrc (cancelling keeps "unsaved changes"); C
   await expect(save).toContainText('unsaved changes');
 
   await save.click();
+  const items = page.locator('.demo-save .demo-more-panel button');
+  await expect(items).toHaveText([/Download /, /Share…/, /Copy the LRC text/]); // no touch: Download first
   await page.getByRole('button', { name: 'Copy the LRC text' }).click();
   await expect(page.getByRole('button', { name: 'Copied ✓' })).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-copied', /^\[ti:Tone\]\n\[00:00\.00\]First line\n/);
@@ -151,6 +153,16 @@ test('Save menu: Share… sends the .lrc (cancelling keeps "unsaved changes"); C
   await loadLyrics(page, 'plain.txt', 'no timing yet'); // nothing synced: Save is disabled, its menu goes too
   await expect(save).toBeDisabled();
   await expect(share).toBeHidden();
+});
+
+test('Save menu on an iPhone (sharing + touch): Share… comes first, as iOS names downloads "Unknown"', async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.canShare = () => true;
+    Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
+  });
+  await load(page);
+  await page.getByRole('button', { name: /^Save \.lrc/ }).click();
+  await expect(page.locator('.demo-save .demo-more-panel button')).toHaveText([/Share…/, /Download /, /Copy the LRC text/]);
 });
 
 test('Save and ⚙ menus: Esc closes them; a choice hands focus back to Save', async ({ page }) => {

@@ -37,6 +37,9 @@ const clock = (ms: number) => formatTime(ms).slice(0, 5); // mm:ss
 const octetFile = (text: string, name: string) => new File([text], name, { type: 'application/octet-stream' });
 // Share… only where the Web Share API can share files (iOS/macOS Safari; Android Chrome won't share .lrc).
 const canShareLrc = !!navigator.canShare?.({ files: [octetFile('', 'x.lrc')] });
+// iPhone/iPad (sharing + touch; Android doesn't share .lrc, Macs have no touch): Share… comes first, because iOS
+// Safari names a downloaded blob "Unknown", while the share sheet keeps the file's name.
+const shareFirst = canShareLrc && navigator.maxTouchPoints > 0;
 // Save menu icons: strokes in the text colour (glyphs like ⤓ differ by platform; emoji ignore the colour).
 const icon = (d: string) => (
   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2"
@@ -213,6 +216,11 @@ function App() {
     navigator.share({ files: [octetFile(lrc, lrcName)] }).then(markSaved, (e) => console.warn(e)); // rejected: cancelled
     closeSaveMenu();
   };
+  const shareItem = (
+    <button type="button" onClick={share}>
+      {icon('M12 15V3M8 7l4-4 4 4M8 11H6v10h12V11h-2')} Share…
+    </button>
+  );
   const copy = () => navigator.clipboard.writeText(lrc).then(() => setCopied('Copied ✓'), () => setCopied('Copy failed'));
   // An export, not a save: TTML can't be loaded back, so the LRC stays "unsaved".
   const downloadTtml = () => saveFile(serializeTtml(parseLrc(lrc), { durationMs: position.durationMs }), baseName + '.ttml');
@@ -276,14 +284,11 @@ function App() {
           </button>
           {saveMenu && stamped > 0 && ( // hidden too once Save is disabled (e.g. a plain .txt loaded meanwhile)
             <div className="demo-more-panel">
+              {shareFirst && shareItem}
               <button type="button" onClick={download}>
                 {icon('M12 3v12m-5-5 5 5 5-5M5 21h14')} Download {lrcName}
               </button>
-              {canShareLrc && (
-                <button type="button" onClick={share}>
-                  {icon('M12 15V3M8 7l4-4 4 4M8 11H6v10h12V11h-2')} Share…
-                </button>
-              )}
+              {canShareLrc && !shareFirst && shareItem}
               {navigator.clipboard && (
                 <button type="button" onClick={copy}>
                   {icon('M9 9h11v11H9zM5 15H4V4h11v1')} {copied || 'Copy the LRC text'}
