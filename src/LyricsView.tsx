@@ -124,7 +124,10 @@ export function LyricsView({ lrc, position, onSeek, offsetMs = 0 }: LyricsProps)
   playing.current = position.playing;
   // Pressing play brings a manually scrolled view back to the current line.
   useEffect(() => {
-    if (position.playing) scrollToCurrent();
+    if (!position.playing) return;
+    clearTimeout(userTimer.current);
+    userTimer.current = 0;
+    scrollToCurrent();
   }, [position.playing]);
 
   // Only user input pauses auto-scroll (we never listen to `scroll`, so our own scrolling doesn't).
