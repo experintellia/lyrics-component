@@ -161,11 +161,19 @@ function LyricsView({ lrc, position, onSeek, offsetMs = 0 }) {
     if (b && el && !userTimer.current) b.scrollTop = el.offsetTop - (b.clientHeight - el.offsetHeight) / 2;
   };
   useEffect(scrollToCurrent, [cur]);
+  const playing = useRef(position.playing);
+  playing.current = position.playing;
+  useEffect(() => {
+    if (!position.playing) return;
+    clearTimeout(userTimer.current);
+    userTimer.current = 0;
+    scrollToCurrent();
+  }, [position.playing]);
   const onUserScroll = () => {
     clearTimeout(userTimer.current);
     userTimer.current = window.setTimeout(() => {
       userTimer.current = 0;
-      scrollToCurrent();
+      if (playing.current) scrollToCurrent();
     }, RESUME_MS);
   };
   if (!lines.length) return null;

@@ -234,7 +234,32 @@ describe('LyricsView', () => {
     expect(scrollTop).toHaveBeenCalledTimes(1); // paused
 
     await act(() => vi.advanceTimersByTime(3_000));
-    expect(scrollTop).toHaveBeenCalledTimes(2); // resumed: back to the current line
+    expect(scrollTop).toHaveBeenCalledTimes(1); // paused: stays where the user scrolled
+  });
+
+  it('while playing, resumes auto-scroll ~3 s after a manual scroll; pausing or pressing play overrides it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const at = (playing: boolean) =>
+      act(() => root.render(<LyricsView lrc={LRC} position={{ ...pos(1_000), playing }} onSeek={onSeek} />));
+    const wheel = () => act(() => view().dispatchEvent(new WheelEvent('wheel', { bubbles: true })));
+    await at(true);
+    const scrollTop = vi.fn();
+    Object.defineProperty(view(), 'scrollTop', { set: scrollTop, configurable: true });
+
+    await wheel();
+    await act(() => vi.advanceTimersByTime(3_000));
+    expect(scrollTop).toHaveBeenCalledTimes(1); // playing: resumed after the timeout
+
+    await wheel();
+    await at(false); // paused before the timer fires
+    await act(() => vi.advanceTimersByTime(3_000));
+    expect(scrollTop).toHaveBeenCalledTimes(1); // paused: stays put
+
+    await wheel();
+    await at(true); // play within 3 s: back right away
+    expect(scrollTop).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTime(3_000));
+    expect(scrollTop).toHaveBeenCalledTimes(2); // the pending timer was cancelled
   });
 
   it.each([
